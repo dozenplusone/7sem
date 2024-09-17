@@ -29,6 +29,11 @@ public:
     inline shared_ptr(shared_ptr&&) noexcept;
 
     inline ~shared_ptr();
+
+    shared_ptr &operator=(const shared_ptr&) noexcept;
+    shared_ptr &operator=(shared_ptr&&) noexcept;
+
+    inline counter_type use_count(void) const noexcept;
 }; // class hw1::shared_ptr
 
 // Increment reference counter or create one.
@@ -87,6 +92,37 @@ hw1::shared_ptr<T>::shared_ptr(shared_ptr &&obj) noexcept
 template<class T>
 hw1::shared_ptr<T>::~shared_ptr() {
     release();
+}
+
+template<class T>
+hw1::shared_ptr<T> &hw1::shared_ptr<T>::operator=(
+    const shared_ptr &obj
+) noexcept {
+    if (ptr != obj.ptr) {
+        release();
+        ptr = obj.ptr;
+        refcount = obj.refcount;
+        acquire();
+    }
+    return *this;
+}
+
+template<class T>
+hw1::shared_ptr<T> &hw1::shared_ptr<T>::operator=(shared_ptr &&obj) noexcept {
+    release();
+    ptr = obj.ptr;
+    refcount = obj.refcount;
+    obj.ptr = nullptr;
+    obj.refcount = nullptr;
+    return *this;
+}
+
+// If `*this` owns a pointer, return the number of owners, otherwise zero.
+template<class T>
+hw1::shared_ptr<T>::counter_type hw1::shared_ptr<T>::use_count(
+    void
+) const noexcept {
+    return refcount ? *refcount : counter_type();
 }
 
 #endif // _HW1_SHARED_PTR_H
