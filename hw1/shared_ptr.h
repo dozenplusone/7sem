@@ -34,6 +34,9 @@ public:
     shared_ptr &operator=(shared_ptr&&) noexcept;
 
     inline counter_type use_count(void) const noexcept;
+    inline element_type *get(void) const noexcept;
+    inline element_type &operator*(void) const;
+    inline element_type *operator->(void) const;
 }; // class hw1::shared_ptr
 
 // Increment reference counter or create one.
@@ -123,6 +126,24 @@ hw1::shared_ptr<T>::counter_type hw1::shared_ptr<T>::use_count(
     void
 ) const noexcept {
     return refcount ? *refcount : counter_type();
+}
+
+// Return the stored pointer.
+template<class T>
+hw1::shared_ptr<T>::element_type *hw1::shared_ptr<T>::get(
+    void
+) const noexcept {
+    return ptr;
+}
+
+template<class T>
+hw1::shared_ptr<T>::element_type &hw1::shared_ptr<T>::operator*(void) const {
+    return *ptr;
+}
+
+template<class T>
+hw1::shared_ptr<T>::element_type *hw1::shared_ptr<T>::operator->(void) const {
+    return ptr;
 }
 
 #endif // _HW1_SHARED_PTR_H
