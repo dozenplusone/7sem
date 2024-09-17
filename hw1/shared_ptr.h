@@ -1,6 +1,7 @@
 #ifndef _HW1_SHARED_PTR_H
 #define _HW1_SHARED_PTR_H
 
+#include <compare>
 #include <cstddef>
 
 namespace hw1 {
@@ -41,6 +42,12 @@ public:
     inline void reset(std::nullptr_t = nullptr) noexcept;
     inline void reset(element_type *p);
     void swap(shared_ptr&) noexcept;
+
+    inline operator bool(void) const noexcept;
+    inline bool operator==(const shared_ptr&) const noexcept;
+    inline bool operator==(std::nullptr_t) const noexcept;
+    inline std::strong_ordering operator<=>(const shared_ptr&) const noexcept;
+    inline std::strong_ordering operator<=>(std::nullptr_t) const noexcept;
 }; // class hw1::shared_ptr
 
 // Increment reference counter or create one.
@@ -174,6 +181,38 @@ void hw1::shared_ptr<T>::swap(shared_ptr &obj) noexcept {
     counter_type *refcount_tmp = refcount;
     refcount = obj.refcount;
     obj.refcount = refcount_tmp;
+}
+
+template<class T>
+hw1::shared_ptr<T>::operator bool(void) const noexcept {
+    return !!ptr;
+}
+
+template<class T>
+bool hw1::shared_ptr<T>::operator==(const shared_ptr &obj) const noexcept {
+    return ptr == obj.ptr;
+}
+
+template<class T>
+bool hw1::shared_ptr<T>::operator==(std::nullptr_t) const noexcept {
+    return !ptr;
+}
+
+template<class T>
+std::strong_ordering hw1::shared_ptr<T>::operator<=>(
+    const shared_ptr &obj
+) const noexcept {
+    std::ptrdiff_t ans = ptr - obj.ptr;
+    return ans < 0 ? std::strong_ordering::less :
+           ans > 0 ? std::strong_ordering::greater :
+                     std::strong_ordering::equal;
+}
+
+template<class T>
+std::strong_ordering hw1::shared_ptr<T>::operator<=>(
+    std::nullptr_t
+) const noexcept {
+    return ptr ? std::strong_ordering::greater : std::strong_ordering::equal;
 }
 
 #endif // _HW1_SHARED_PTR_H
