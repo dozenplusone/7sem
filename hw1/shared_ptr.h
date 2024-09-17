@@ -37,6 +37,10 @@ public:
     inline element_type *get(void) const noexcept;
     inline element_type &operator*(void) const;
     inline element_type *operator->(void) const;
+
+    inline void reset(std::nullptr_t = nullptr) noexcept;
+    inline void reset(element_type *p);
+    void swap(shared_ptr&) noexcept;
 }; // class hw1::shared_ptr
 
 // Increment reference counter or create one.
@@ -144,6 +148,32 @@ hw1::shared_ptr<T>::element_type &hw1::shared_ptr<T>::operator*(void) const {
 template<class T>
 hw1::shared_ptr<T>::element_type *hw1::shared_ptr<T>::operator->(void) const {
     return ptr;
+}
+
+// Release the ownership of the managed object, if any.
+template<class T>
+void hw1::shared_ptr<T>::reset(std::nullptr_t) noexcept {
+    release();
+}
+
+// Replace the managed object with another object.
+template<class T>
+void hw1::shared_ptr<T>::reset(element_type *p) {
+    release();
+    ptr = p;
+    acquire();
+}
+
+// Exchange the stored pointer values and the ownerships.
+template<class T>
+void hw1::shared_ptr<T>::swap(shared_ptr &obj) noexcept {
+    element_type *ptr_tmp = ptr;
+    ptr = obj.ptr;
+    obj.ptr = ptr_tmp;
+
+    counter_type *refcount_tmp = refcount;
+    refcount = obj.refcount;
+    obj.refcount = refcount_tmp;
 }
 
 #endif // _HW1_SHARED_PTR_H
