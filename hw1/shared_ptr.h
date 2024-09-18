@@ -26,7 +26,7 @@ private:
 
 public:
     constexpr shared_ptr(std::nullptr_t = nullptr) noexcept;
-    inline explicit shared_ptr(element_type*);
+    explicit shared_ptr(element_type*);
     inline shared_ptr(const shared_ptr&) noexcept;
     inline shared_ptr(shared_ptr&&) noexcept;
 
@@ -44,7 +44,7 @@ public:
     &operator[](std::ptrdiff_t) const requires (std::is_array_v<T>);
 
     inline void reset(std::nullptr_t = nullptr) noexcept;
-    inline void reset(element_type *p);
+    void reset(element_type *p);
     void swap(shared_ptr&) noexcept;
 
     inline operator bool(void) const noexcept;
@@ -91,7 +91,12 @@ hw1::shared_ptr<T>::shared_ptr(element_type *p)
     : ptr(p)
     , refcount(nullptr)
 {
-    acquire();
+    try {
+        acquire();
+    } catch (...) {
+        release();
+        throw;
+    }
 }
 
 template<class T>
@@ -185,7 +190,12 @@ template<class T>
 void hw1::shared_ptr<T>::reset(element_type *p) {
     release();
     ptr = p;
-    acquire();
+    try {
+        acquire();
+    } catch (...) {
+        release();
+        throw;
+    }
 }
 
 // Exchange the stored pointer values and the ownerships.
