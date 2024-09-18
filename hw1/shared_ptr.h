@@ -3,6 +3,7 @@
 
 #include <compare>
 #include <cstddef>
+#include <type_traits>
 
 namespace hw1 {
     template<class T>
@@ -13,7 +14,7 @@ namespace hw1 {
 template<class T>
 class hw1::shared_ptr {
 public:
-    typedef T element_type;
+    typedef std::remove_extent_t<T> element_type;
     typedef unsigned long long counter_type;
 
 private:
@@ -37,7 +38,10 @@ public:
     inline counter_type use_count(void) const noexcept;
     inline element_type *get(void) const noexcept;
     inline element_type &operator*(void) const;
-    inline element_type *operator->(void) const;
+
+    inline element_type *operator->(void) const requires (!std::is_array_v<T>);
+    inline element_type
+    &operator[](std::ptrdiff_t) const requires (std::is_array_v<T>);
 
     inline void reset(std::nullptr_t = nullptr) noexcept;
     inline void reset(element_type *p);
@@ -66,7 +70,11 @@ template<class T>
 void hw1::shared_ptr<T>::release(void) {
     if (!(refcount && --*refcount)) {
         delete refcount;
-        delete ptr;
+        if constexpr (std::is_array_v<T>) {
+            delete[] ptr;
+        } else {
+            delete ptr;
+        }
     }
     ptr = nullptr;
     refcount = nullptr;
@@ -153,8 +161,17 @@ hw1::shared_ptr<T>::element_type &hw1::shared_ptr<T>::operator*(void) const {
 }
 
 template<class T>
-hw1::shared_ptr<T>::element_type *hw1::shared_ptr<T>::operator->(void) const {
+hw1::shared_ptr<T>::element_type *hw1::shared_ptr<T>::operator->(
+    void
+) const requires (!std::is_array_v<T>) {
     return ptr;
+}
+
+template<class T>
+hw1::shared_ptr<T>::element_type &hw1::shared_ptr<T>::operator[](
+    std::ptrdiff_t idx
+) const requires (std::is_array_v<T>) {
+    return ptr[idx];
 }
 
 // Release the ownership of the managed object, if any.
