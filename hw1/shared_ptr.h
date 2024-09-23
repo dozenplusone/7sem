@@ -39,9 +39,10 @@ public:
     inline element_type *get(void) const noexcept;
     inline element_type &operator*(void) const;
 
-    inline element_type *operator->(void) const requires (!std::is_array_v<T>);
-    inline element_type
-    &operator[](std::ptrdiff_t) const requires (std::is_array_v<T>);
+    inline element_type *operator->(void) const
+    requires std::is_class_v<T> || std::is_union_v<T>;
+    inline element_type &operator[](std::ptrdiff_t) const
+    requires std::is_array_v<T>;
 
     inline void reset(std::nullptr_t = nullptr) noexcept;
     void reset(element_type *p);
@@ -166,16 +167,16 @@ hw1::shared_ptr<T>::element_type &hw1::shared_ptr<T>::operator*(void) const {
 }
 
 template<class T>
-hw1::shared_ptr<T>::element_type *hw1::shared_ptr<T>::operator->(
-    void
-) const requires (!std::is_array_v<T>) {
+hw1::shared_ptr<T>::element_type *hw1::shared_ptr<T>::operator->(void) const
+requires std::is_class_v<T> || std::is_union_v<T> {
     return ptr;
 }
 
 template<class T>
 hw1::shared_ptr<T>::element_type &hw1::shared_ptr<T>::operator[](
     std::ptrdiff_t idx
-) const requires (std::is_array_v<T>) {
+) const
+requires std::is_array_v<T> {
     return ptr[idx];
 }
 
