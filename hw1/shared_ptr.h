@@ -6,9 +6,29 @@
 #include <type_traits>
 
 namespace hw1 {
+    template<class C, class T>
+    struct is_pointer_compatible;
+
+    template<class C, class T>
+    inline constexpr bool is_pointer_compatible_v =
+        is_pointer_compatible<C, T>::value;
+
     template<class T>
     class shared_ptr;
 } // namespace hw1
+
+template<class C, class T>
+struct hw1::is_pointer_compatible {
+    static inline constexpr bool value =
+        std::is_convertible_v<C*, T*> ||
+        std::is_bounded_array_v<C> &&
+        std::is_unbounded_array_v<T> &&
+        std::is_same_v<
+            std::remove_extent_t<C>,
+            std::remove_cv_t<std::remove_extent_t<T>>
+        >;
+    constexpr bool operator()(void) const noexcept { return value; }
+};
 
 // A smart pointer with reference-counted copy semantics.
 template<class T>
@@ -16,6 +36,9 @@ class hw1::shared_ptr {
 public:
     typedef std::remove_extent_t<T> element_type;
     typedef unsigned long long counter_type;
+
+    template<class C>
+    friend class shared_ptr;
 
 private:
     element_type *ptr;              // Contained pointer.
@@ -26,14 +49,36 @@ private:
 
 public:
     constexpr shared_ptr(std::nullptr_t = nullptr) noexcept;
-    explicit shared_ptr(element_type*);
+
+    template<class C>
+    explicit shared_ptr(C*)
+    requires is_pointer_compatible_v<C, element_type>;
+
     inline shared_ptr(const shared_ptr&) noexcept;
+
+    template<class C>
+    inline shared_ptr(const shared_ptr<C>&) noexcept
+    requires is_pointer_compatible_v<C, T>;
+
     inline shared_ptr(shared_ptr&&) noexcept;
+
+    template<class C>
+    inline shared_ptr(shared_ptr<C>&&) noexcept
+    requires is_pointer_compatible_v<C, T>;
 
     inline ~shared_ptr();
 
     shared_ptr &operator=(const shared_ptr&) noexcept;
+
+    template<class C>
+    shared_ptr &operator=(const shared_ptr<C>&) noexcept
+    requires is_pointer_compatible_v<C, T>;
+
     shared_ptr &operator=(shared_ptr&&) noexcept;
+
+    template<class C>
+    shared_ptr &operator=(shared_ptr<C>&&) noexcept
+    requires is_pointer_compatible_v<C, T>;
 
     inline counter_type use_count(void) const noexcept;
     inline element_type *get(void) const noexcept;
@@ -41,17 +86,29 @@ public:
 
     inline element_type *operator->(void) const
     requires std::is_class_v<T> || std::is_union_v<T>;
+
     inline element_type &operator[](std::ptrdiff_t) const
     requires std::is_array_v<T>;
 
     inline void reset(std::nullptr_t = nullptr) noexcept;
-    void reset(element_type *p);
+
+    template<class C>
+    void reset(C *p)
+    requires is_pointer_compatible_v<C, element_type>;
+
     void swap(shared_ptr&) noexcept;
 
     inline operator bool(void) const noexcept;
-    inline bool operator==(const shared_ptr&) const noexcept;
+
+    template<class C>
+    inline bool operator==(const shared_ptr<C>&) const noexcept;
+
     inline bool operator==(std::nullptr_t) const noexcept;
-    inline std::strong_ordering operator<=>(const shared_ptr&) const noexcept;
+
+    template<class C>
+    inline std::strong_ordering operator<=>(const shared_ptr<C>&)
+    const noexcept;
+
     inline std::strong_ordering operator<=>(std::nullptr_t) const noexcept;
 }; // class hw1::shared_ptr
 
@@ -88,8 +145,10 @@ constexpr hw1::shared_ptr<T>::shared_ptr(std::nullptr_t) noexcept
 {}
 
 template<class T>
-hw1::shared_ptr<T>::shared_ptr(element_type *p)
-    : ptr(p)
+template<class C>
+hw1::shared_ptr<T>::shared_ptr(C *p)
+requires hw1::is_pointer_compatible_v<C, element_type>
+    : ptr(static_cast<element_type*>(p))
     , refcount(nullptr)
 {
     try {
@@ -109,8 +168,29 @@ hw1::shared_ptr<T>::shared_ptr(const shared_ptr &obj) noexcept
 }
 
 template<class T>
+template<class C>
+hw1::shared_ptr<T>::shared_ptr(const shared_ptr<C> &obj) noexcept
+requires hw1::is_pointer_compatible_v<C, T>
+    : ptr(static_cast<element_type*>(obj.ptr))
+    , refcount(obj.refcount)
+{
+    acquire();
+}
+
+template<class T>
 hw1::shared_ptr<T>::shared_ptr(shared_ptr &&obj) noexcept
     : ptr(obj.ptr)
+    , refcount(obj.refcount)
+{
+    obj.ptr = nullptr;
+    obj.refcount = nullptr;
+}
+
+template<class T>
+template<class C>
+hw1::shared_ptr<T>::shared_ptr(shared_ptr<C> &&obj) noexcept
+requires hw1::is_pointer_compatible_v<C, T>
+    : ptr(static_cast<element_type*>(obj.ptr))
     , refcount(obj.refcount)
 {
     obj.ptr = nullptr;
@@ -136,9 +216,39 @@ hw1::shared_ptr<T> &hw1::shared_ptr<T>::operator=(
 }
 
 template<class T>
+template<class C>
+hw1::shared_ptr<T> &hw1::shared_ptr<T>::operator=(
+    const shared_ptr<C> &obj
+) noexcept
+requires hw1::is_pointer_compatible_v<C, T>
+{
+    element_type *cast_obj_ptr = static_cast<element_type*>(obj.ptr);
+    if (ptr != cast_obj_ptr) {
+        release();
+        ptr = cast_obj_ptr;
+        refcount = obj.refcount;
+        acquire();
+    }
+    return *this;
+}
+
+template<class T>
 hw1::shared_ptr<T> &hw1::shared_ptr<T>::operator=(shared_ptr &&obj) noexcept {
     release();
     ptr = obj.ptr;
+    refcount = obj.refcount;
+    obj.ptr = nullptr;
+    obj.refcount = nullptr;
+    return *this;
+}
+
+template<class T>
+template<class C>
+hw1::shared_ptr<T> &hw1::shared_ptr<T>::operator=(shared_ptr<C> &&obj) noexcept
+requires hw1::is_pointer_compatible_v<C, T>
+{
+    release();
+    ptr = static_cast<element_type*>(obj.ptr);
     refcount = obj.refcount;
     obj.ptr = nullptr;
     obj.refcount = nullptr;
@@ -168,7 +278,8 @@ hw1::shared_ptr<T>::element_type &hw1::shared_ptr<T>::operator*(void) const {
 
 template<class T>
 hw1::shared_ptr<T>::element_type *hw1::shared_ptr<T>::operator->(void) const
-requires std::is_class_v<T> || std::is_union_v<T> {
+requires std::is_class_v<T> || std::is_union_v<T>
+{
     return ptr;
 }
 
@@ -176,7 +287,8 @@ template<class T>
 hw1::shared_ptr<T>::element_type &hw1::shared_ptr<T>::operator[](
     std::ptrdiff_t idx
 ) const
-requires std::is_array_v<T> {
+requires std::is_array_v<T>
+{
     return ptr[idx];
 }
 
@@ -188,9 +300,12 @@ void hw1::shared_ptr<T>::reset(std::nullptr_t) noexcept {
 
 // Replace the managed object with another object.
 template<class T>
-void hw1::shared_ptr<T>::reset(element_type *p) {
+template<class C>
+void hw1::shared_ptr<T>::reset(C *p)
+requires hw1::is_pointer_compatible_v<C, element_type>
+{
     release();
-    ptr = p;
+    ptr = static_cast<element_type*>(p);
     try {
         acquire();
     } catch (...) {
@@ -217,7 +332,8 @@ hw1::shared_ptr<T>::operator bool(void) const noexcept {
 }
 
 template<class T>
-bool hw1::shared_ptr<T>::operator==(const shared_ptr &obj) const noexcept {
+template<class C>
+bool hw1::shared_ptr<T>::operator==(const shared_ptr<C> &obj) const noexcept {
     return ptr == obj.ptr;
 }
 
@@ -227,13 +343,11 @@ bool hw1::shared_ptr<T>::operator==(std::nullptr_t) const noexcept {
 }
 
 template<class T>
+template<class C>
 std::strong_ordering hw1::shared_ptr<T>::operator<=>(
-    const shared_ptr &obj
+    const shared_ptr<C> &obj
 ) const noexcept {
-    std::ptrdiff_t ans = ptr - obj.ptr;
-    return ans < 0 ? std::strong_ordering::less :
-           ans > 0 ? std::strong_ordering::greater :
-                     std::strong_ordering::equal;
+    return std::compare_three_way{}(ptr, obj.ptr);
 }
 
 template<class T>
