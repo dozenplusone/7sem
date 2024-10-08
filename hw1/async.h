@@ -30,6 +30,7 @@ public:
             std::rethrow_exception(std::current_exception());
         }
         std::suspend_always final_suspend(void) noexcept { return {}; }
+        Return result(void) const noexcept { return value; }
     };
 
 private:
@@ -45,6 +46,12 @@ public:
     inline ~async();
 
     bool resume(void) const;
+
+    bool await_ready(void) const noexcept { return !handle || handle.done(); }
+    void await_suspend(std::coroutine_handle<>) const noexcept {}
+    Return await_resume(void) const noexcept {
+        return handle.promise().result();
+    }
 }; // class hw1::async
 
 template<>
@@ -59,6 +66,7 @@ public:
         std::rethrow_exception(std::current_exception());
     }
     std::suspend_always final_suspend(void) noexcept { return {}; }
+    void result(void) const noexcept {}
 };
 
 template<class Return>
