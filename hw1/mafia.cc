@@ -261,7 +261,25 @@ bool Game::finished(void) const {
             civilian_count += players[i]->is_alive();
         }
     }
-    return !maniac_alive || mafioso_count >= civilian_count;
+    if (mafioso_count + civilian_count + maniac_alive == 0) {
+        std::clog << "Drawn!\n";
+        return true;
+    } else if (mafioso_count == 0) {
+        if (!maniac_alive) {
+            std::clog << "Civilians win!\n";
+            return true;
+        } else if (civilian_count <= 1) {
+            std::clog << "Maniac wins!\n";
+            return true;
+        } else {
+            return false;
+        }
+    } else if (!maniac_alive && mafioso_count >= civilian_count) {
+        std::clog << "Mafia wins!\n";
+        return true;
+    } else {
+        return false;
+    }
 }
 
 hw1::async<std::optional<size_t>> Civilian::vote(const Game &game) {
@@ -407,8 +425,8 @@ hw1::async<std::optional<size_t>> Doctor::act(const Game &game) {
             last_cured.has_value() && game[result] == game[last_cured.value()]
             || !game[result]->is_alive()
         );
-        last_cured = result;
     }
+    last_cured = result;
     co_return result;
 }
 
