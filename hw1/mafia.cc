@@ -1,10 +1,13 @@
 #include "async.h"
 #include "shared_ptr.h"
 
+#include <algorithm>
 #include <ctime>
 #include <iostream>
 #include <optional>
 #include <random>
+#include <ranges>
+#include <unordered_map>
 #include <vector>
 
 class Player;
@@ -20,6 +23,7 @@ public:
         return !!dynamic_cast<Role*>(players.at(i).get());
     }
     hw1::async<void> start(void);
+    bool finished(void) const;
 };
 
 class Player {
@@ -147,16 +151,117 @@ size_t Game::random_choice(void) const {
 }
 
 hw1::async<void> Game::start(void) {
-    std::vector<std::optional<size_t>> results(players.size());
+    std::vector<std::pair<size_t, size_t>> results;
+    std::unordered_map<size_t, size_t> counter;
+    size_t day = 0;
     while (true) {
+        std::clog << ">>> Day #" << ++day << " <<<\n";
+        results.clear();
+        counter.clear();
         for (size_t i = 0; i < players.size(); ++i) {
-            results[i] = co_await players[i]->act(*this);
+            std::optional<size_t> vote = co_await players[i]->vote(*this);
+            if (vote.has_value()) {
+                ++counter[vote.value()];
+            }
         }
+
+        auto decision = std::max_element(
+            counter.begin(),
+            counter.end(),
+            [](auto &lhs, auto &rhs) { return lhs.second > rhs.second; }
+        );
+
+        if (decision != counter.end()) {
+            players[decision->first]->alive = false;
+            std::clog << "Player #" << decision->first
+                      << " got kicked out.\n";
+        }
+
+        if (finished()) {
+            std::clog << "Game over.\n";
+            co_return;
+        }
+
+        std::clog << ">>> Night #" << day << " <<<\n";
+        results.clear();
+        counter.clear();
         for (size_t i = 0; i < players.size(); ++i) {
-            results[i] = co_await players[i]->vote(*this);
+            std::optional<size_t> action = co_await players[i]->act(*this);
+            if (action.has_value()) {
+                results.emplace_back(i, action.value());
+            }
         }
-        co_return;
+
+        auto mafia_votes = results | std::ranges::views::filter(
+            [this](const auto &obj) { return check_role<Mafioso>(obj.first); }
+        );
+        if (!mafia_votes.empty()) {
+            auto mafia_counter = std::transform(
+                mafia_votes.begin(),
+                mafia_votes.end(),
+                std::inserter(counter, counter.begin()),
+                [&counter](const auto &obj) -> std::pair<size_t, size_t> {
+                    return {obj.second, ++counter[obj.second]};
+                }
+            );
+            auto mafia_decision = std::max_element(
+                counter.begin(),
+                counter.end(),
+                [](auto &lhs, auto &rhs) { return lhs.second > rhs.second; }
+            );
+            players[mafia_decision->first]->alive = false;
+            std::clog << "Player #" << mafia_decision->first
+                    << " got killed by the mafia.\n";
+        }
+
+        auto maniac_decision = results | std::ranges::views::filter(
+            [this](const auto &obj) { return check_role<Maniac>(obj.first); }
+        );
+        if (!maniac_decision.empty()) {
+            players[maniac_decision.front().second]->alive = false;
+            std::clog << "Player #" << maniac_decision.front().second
+                      << " got killed by Maniac.\n";
+        }
+
+        auto sheriff_decision = results | std::ranges::views::filter(
+            [this](const auto &obj) { return check_role<Sheriff>(obj.first); }
+        );
+        if (!sheriff_decision.empty()) {
+            players[sheriff_decision.front().second]->alive = false;
+            std::clog << "Player #" << sheriff_decision.front().second
+                      << " got killed by Sheriff.\n";
+        }
+
+        auto doctor_decision = results | std::ranges::views::filter(
+            [this](const auto &obj) { return check_role<Doctor>(obj.first); }
+        );
+        if (!doctor_decision.empty()) {
+            players[doctor_decision.front().second]->alive = true;
+            std::clog << "Player #" << doctor_decision.front().second
+                      << " got healed by Doctor.\n";
+        }
+
+        if (finished()) {
+            std::clog << "Game over.\n";
+            co_return;
+        }
     }
+}
+
+bool Game::finished(void) const {
+    bool maniac_alive;
+    size_t mafioso_count = 0;
+    size_t civilian_count = 0;
+    for (size_t i = 0; i < players.size(); ++i) {
+        if (check_role<Maniac>(i)) {
+            maniac_alive = players[i]->is_alive();
+        } else if (check_role<Mafioso>(i)) {
+            mafioso_count += players[i]->is_alive();
+        } else {
+            civilian_count += players[i]->is_alive();
+        }
+    }
+    return !maniac_alive || mafioso_count >= civilian_count;
 }
 
 hw1::async<std::optional<size_t>> Civilian::vote(const Game &game) {
@@ -265,6 +370,7 @@ hw1::async<std::optional<size_t>> Sheriff::act(const Game &game) {
         }
     } else {
         if (has_target && !game[result]->is_alive()) {
+            last_checked = std::nullopt;
             has_target = false;
         }
         if (!has_target) {
