@@ -6,29 +6,19 @@
 #include <type_traits>
 
 namespace hw1 {
-    template<class C, class T>
-    struct is_pointer_compatible;
-
-    template<class C, class T>
-    inline constexpr bool is_pointer_compatible_v =
-        is_pointer_compatible<C, T>::value;
+    template<class From, class To>
+    concept pointer_compatible =
+        std::is_convertible_v<From*, To*> ||
+        std::is_bounded_array_v<From> &&
+        std::is_unbounded_array_v<To> &&
+        std::is_same_v<
+            std::remove_extent_t<From>,
+            std::remove_cv_t<std::remove_extent_t<To>>
+        >;
 
     template<class T>
     class shared_ptr;
 } // namespace hw1
-
-template<class C, class T>
-struct hw1::is_pointer_compatible {
-    static inline constexpr bool value =
-        std::is_convertible_v<C*, T*> ||
-        std::is_bounded_array_v<C> &&
-        std::is_unbounded_array_v<T> &&
-        std::is_same_v<
-            std::remove_extent_t<C>,
-            std::remove_cv_t<std::remove_extent_t<T>>
-        >;
-    constexpr bool operator()(void) const noexcept { return value; }
-};
 
 // A smart pointer with reference-counted copy semantics.
 template<class T>
@@ -52,33 +42,29 @@ public:
 
     template<class C>
     explicit shared_ptr(C*)
-    requires is_pointer_compatible_v<C, element_type>;
+    requires pointer_compatible<C, element_type>;
 
     inline shared_ptr(const shared_ptr&) noexcept;
 
-    template<class C>
-    inline shared_ptr(const shared_ptr<C>&) noexcept
-    requires is_pointer_compatible_v<C, T>;
+    template<pointer_compatible<T> C>
+    inline shared_ptr(const shared_ptr<C>&) noexcept;
 
     inline shared_ptr(shared_ptr&&) noexcept;
 
-    template<class C>
-    inline shared_ptr(shared_ptr<C>&&) noexcept
-    requires is_pointer_compatible_v<C, T>;
+    template<pointer_compatible<T> C>
+    inline shared_ptr(shared_ptr<C>&&) noexcept;
 
     inline ~shared_ptr();
 
     shared_ptr &operator=(const shared_ptr&) noexcept;
 
-    template<class C>
-    shared_ptr &operator=(const shared_ptr<C>&) noexcept
-    requires is_pointer_compatible_v<C, T>;
+    template<pointer_compatible<T> C>
+    shared_ptr &operator=(const shared_ptr<C>&) noexcept;
 
     shared_ptr &operator=(shared_ptr&&) noexcept;
 
-    template<class C>
-    shared_ptr &operator=(shared_ptr<C>&&) noexcept
-    requires is_pointer_compatible_v<C, T>;
+    template<pointer_compatible<T> C>
+    shared_ptr &operator=(shared_ptr<C>&&) noexcept;
 
     inline counter_type use_count(void) const noexcept;
     inline element_type *get(void) const noexcept;
@@ -94,7 +80,7 @@ public:
 
     template<class C>
     void reset(C *p)
-    requires is_pointer_compatible_v<C, element_type>;
+    requires pointer_compatible<C, element_type>;
 
     void swap(shared_ptr&) noexcept;
 
@@ -147,7 +133,7 @@ constexpr hw1::shared_ptr<T>::shared_ptr(std::nullptr_t) noexcept
 template<class T>
 template<class C>
 hw1::shared_ptr<T>::shared_ptr(C *p)
-requires hw1::is_pointer_compatible_v<C, element_type>
+requires pointer_compatible<C, element_type>
     : ptr(static_cast<element_type*>(p))
     , refcount(nullptr)
 {
@@ -168,9 +154,8 @@ hw1::shared_ptr<T>::shared_ptr(const shared_ptr &obj) noexcept
 }
 
 template<class T>
-template<class C>
+template<hw1::pointer_compatible<T> C>
 hw1::shared_ptr<T>::shared_ptr(const shared_ptr<C> &obj) noexcept
-requires hw1::is_pointer_compatible_v<C, T>
     : ptr(static_cast<element_type*>(obj.ptr))
     , refcount(obj.refcount)
 {
@@ -187,9 +172,8 @@ hw1::shared_ptr<T>::shared_ptr(shared_ptr &&obj) noexcept
 }
 
 template<class T>
-template<class C>
+template<hw1::pointer_compatible<T> C>
 hw1::shared_ptr<T>::shared_ptr(shared_ptr<C> &&obj) noexcept
-requires hw1::is_pointer_compatible_v<C, T>
     : ptr(static_cast<element_type*>(obj.ptr))
     , refcount(obj.refcount)
 {
@@ -205,7 +189,8 @@ hw1::shared_ptr<T>::~shared_ptr() {
 template<class T>
 hw1::shared_ptr<T> &hw1::shared_ptr<T>::operator=(
     const shared_ptr &obj
-) noexcept {
+) noexcept
+{
     if (ptr != obj.ptr) {
         release();
         ptr = obj.ptr;
@@ -216,11 +201,10 @@ hw1::shared_ptr<T> &hw1::shared_ptr<T>::operator=(
 }
 
 template<class T>
-template<class C>
+template<hw1::pointer_compatible<T> C>
 hw1::shared_ptr<T> &hw1::shared_ptr<T>::operator=(
     const shared_ptr<C> &obj
 ) noexcept
-requires hw1::is_pointer_compatible_v<C, T>
 {
     element_type *cast_obj_ptr = static_cast<element_type*>(obj.ptr);
     if (ptr != cast_obj_ptr) {
@@ -243,9 +227,8 @@ hw1::shared_ptr<T> &hw1::shared_ptr<T>::operator=(shared_ptr &&obj) noexcept {
 }
 
 template<class T>
-template<class C>
+template<hw1::pointer_compatible<T> C>
 hw1::shared_ptr<T> &hw1::shared_ptr<T>::operator=(shared_ptr<C> &&obj) noexcept
-requires hw1::is_pointer_compatible_v<C, T>
 {
     release();
     ptr = static_cast<element_type*>(obj.ptr);
@@ -259,7 +242,8 @@ requires hw1::is_pointer_compatible_v<C, T>
 template<class T>
 hw1::shared_ptr<T>::counter_type hw1::shared_ptr<T>::use_count(
     void
-) const noexcept {
+) const noexcept
+{
     return refcount ? *refcount : counter_type();
 }
 
@@ -267,7 +251,8 @@ hw1::shared_ptr<T>::counter_type hw1::shared_ptr<T>::use_count(
 template<class T>
 hw1::shared_ptr<T>::element_type *hw1::shared_ptr<T>::get(
     void
-) const noexcept {
+) const noexcept
+{
     return ptr;
 }
 
@@ -302,7 +287,7 @@ void hw1::shared_ptr<T>::reset(std::nullptr_t) noexcept {
 template<class T>
 template<class C>
 void hw1::shared_ptr<T>::reset(C *p)
-requires hw1::is_pointer_compatible_v<C, element_type>
+requires pointer_compatible<C, element_type>
 {
     release();
     ptr = static_cast<element_type*>(p);
@@ -346,14 +331,16 @@ template<class T>
 template<class C>
 std::strong_ordering hw1::shared_ptr<T>::operator<=>(
     const shared_ptr<C> &obj
-) const noexcept {
+) const noexcept
+{
     return std::compare_three_way{}(ptr, obj.ptr);
 }
 
 template<class T>
 std::strong_ordering hw1::shared_ptr<T>::operator<=>(
     std::nullptr_t
-) const noexcept {
+) const noexcept
+{
     return ptr ? std::strong_ordering::greater : std::strong_ordering::equal;
 }
 
