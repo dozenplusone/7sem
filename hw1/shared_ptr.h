@@ -218,11 +218,13 @@ hw1::shared_ptr<T> &hw1::shared_ptr<T>::operator=(
 
 template<class T>
 hw1::shared_ptr<T> &hw1::shared_ptr<T>::operator=(shared_ptr &&obj) noexcept {
-    release();
-    ptr = obj.ptr;
-    refcount = obj.refcount;
-    obj.ptr = nullptr;
-    obj.refcount = nullptr;
+    if (obj != *this) {
+        release();
+        ptr = obj.ptr;
+        refcount = obj.refcount;
+        obj.ptr = nullptr;
+        obj.refcount = nullptr;
+    }
     return *this;
 }
 
