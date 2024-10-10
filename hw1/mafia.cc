@@ -8,6 +8,7 @@
 #include <random>
 #include <ranges>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 class Player;
@@ -38,7 +39,8 @@ public:
         : human(is_human)
         , alive(true)
     {}
-    inline bool is_alive(void) const noexcept { return alive; }
+    virtual ~Player() {}
+    bool is_alive(void) const noexcept { return alive; }
     virtual hw1::async<std::optional<size_t>> vote(const Game&) = 0;
     virtual hw1::async<std::optional<size_t>> act(const Game&) = 0;
 };
@@ -63,6 +65,7 @@ public:
 
 class Sheriff: public Civilian {
 protected:
+    std::unordered_set<size_t> civilians_checked;
     std::optional<size_t> last_checked;
     bool has_target;
 
@@ -329,7 +332,11 @@ hw1::async<std::optional<size_t>> Sheriff::vote(const Game &game) {
         if (!has_target) {
             do {
                 result = game.random_choice();
-            } while (game[result] == this || !game[result]->is_alive());
+            } while (
+                civilians_checked.contains(result)
+                || !game[result]->is_alive()
+                || game[result] == this
+            );
         } else {
             result = last_checked.value();
         }
@@ -381,27 +388,40 @@ hw1::async<std::optional<size_t>> Sheriff::act(const Game &game) {
         } while (!shooting.has_value());
         std::cout << "vote: ";
         std::cin >> result;
-        if (!shooting) {
+        if (!shooting.value()) {
+            std::cout << "Player #" << result << " is";
+            if (!game.check_role<Mafioso>(result)) {
+                std::cout << " not";
+            }
+            std::cout << " a mafioso.\n";
             co_return {};
         } else {
             co_return result;
         }
     } else {
-        if (has_target && !game[result]->is_alive()) {
-            last_checked = std::nullopt;
+        if (has_target) {
             has_target = false;
+            result = last_checked.value();
+            last_checked = std::nullopt;
+            if (game[result]->is_alive()) {
+                co_return result;
+            }
         }
         if (!has_target) {
             do {
                 result = game.random_choice();
-            } while (game[result] == this || !game[result]->is_alive());
+            } while (
+                civilians_checked.contains(result)
+                || !game[result]->is_alive()
+                || game[result] == this
+            );
             if (game.check_role<Mafioso>(result)) {
                 last_checked = result;
                 has_target = true;
+            } else {
+                civilians_checked.insert(result);
             }
             co_return {};
-        } else {
-            co_return last_checked;
         }
     }
 }
