@@ -5,33 +5,27 @@
 #include <exception>
 
 namespace hw1 {
+    namespace promise_impl {
+        struct promise_base;
+
+        template<class T>
+        struct promise;
+    }
+
     template<class Return>
     class async;
 } // namespace hw1
 
 // A wrapper template class for convenient, some-Python-style
 // use of asynchronous functions.
-// @param Return Type to be returned from the function. `void` is possible.
+// @tparam Return Type to be returned from the function. `void` is possible.
 template<class Return>
 class hw1::async {
 public:
-    class promise_type;
+    using promise_type = promise_impl::promise<Return>;
     using handle_type = std::coroutine_handle<promise_type>;
 
-    class promise_type {
-        Return value;
-    public:
-        async<Return> get_return_object(void) {
-            return {handle_type::from_promise(*this)};
-        }
-        std::suspend_never initial_suspend(void) { return {}; }
-        void return_value(const Return &val) { value = val; }
-        void unhandled_exception(void) {
-            std::rethrow_exception(std::current_exception());
-        }
-        std::suspend_always final_suspend(void) noexcept { return {}; }
-        Return result(void) const noexcept { return value; }
-    };
+    friend promise_type;
 
 private:
     handle_type handle;
@@ -54,18 +48,44 @@ public:
     }
 }; // class hw1::async
 
-template<>
-class hw1::async<void>::promise_type {
-public:
-    async<void> get_return_object(void) {
-        return {handle_type::from_promise(*this)};
-    }
+struct hw1::promise_impl::promise_base {
     std::suspend_never initial_suspend(void) { return {}; }
-    void return_void() {}
     void unhandled_exception(void) {
         std::rethrow_exception(std::current_exception());
     }
     std::suspend_always final_suspend(void) noexcept { return {}; }
+};
+
+template<class T>
+struct hw1::promise_impl::promise: hw1::promise_impl::promise_base {
+    async<T> get_return_object(void) {
+        return {async<T>::handle_type::from_promise(*this)};
+    }
+    void return_value(const T &val) { value = val; }
+    T result(void) const noexcept { return value; }
+
+private:
+    T value;
+};
+
+template<class T>
+struct hw1::promise_impl::promise<T&>: hw1::promise_impl::promise_base {
+    async<T&> get_return_object(void) {
+        return {async<T&>::handle_type::from_promise(*this)};
+    }
+    void return_value(T &val) { value = &val; }
+    T &result(void) const noexcept { return *value; }
+
+private:
+    T *value;
+};
+
+template<>
+struct hw1::promise_impl::promise<void>: hw1::promise_impl::promise_base {
+    async<void> get_return_object(void) {
+        return {async<void>::handle_type::from_promise(*this)};
+    }
+    void return_void(void) {}
     void result(void) const noexcept {}
 };
 
