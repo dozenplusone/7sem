@@ -227,6 +227,7 @@ hw1::async<void> Game::start(void) {
     std::string_view cur_path;
     std::string msg;
     size_t day = 0;
+    size_t target;
 
     while (true) {
         std::cout << ">>>  Day #" << ++day << "  <<<\n";
@@ -241,24 +242,27 @@ hw1::async<void> Game::start(void) {
 
         for (size_t i = 0; i < tasks.size(); ++i) {
             if (auto vote = co_await tasks[i]; vote.has_value()) {
-                ++votes[vote.value()];
+                target = vote.value();
+                ++votes[target];
                 logger(cur_path, std::format(
                     "Player #{} ({}) votes against Player #{} ({})",
-                    i,
-                    rolenames[typeid(*players[i])],
-                    vote.value(),
-                    rolenames[typeid(*players[vote.value()])]
+                    i, rolenames[typeid(*players[i])],
+                    target, rolenames[typeid(*players[target])]
                 ));
             }
         }
 
-        auto decision = std::max_element(
+        auto day_decision = std::max_element(
             votes.begin(),
             votes.end(),
             [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; }
         );
-        players[decision->first]->alive = false;
-        msg = std::format("Player #{} got kicked out.", decision->first);
+        target = day_decision->first;
+        players[target]->alive = false;
+        msg = std::format(
+            "Player #{} ({}) got kicked out.",
+            target, rolenames[typeid(*players[target])]
+        );
         std::cout << msg << '\n';
         logger(cur_path, msg);
 
@@ -266,104 +270,132 @@ hw1::async<void> Game::start(void) {
             co_return;
         }
 
-        std::clog << ">>> Night #" << day << " <<<\n";
+        std::cout << ">>> Night #" << day << " <<<\n";
+        cur_path = std::format("night_{}.txt", day);
         results.clear();
         votes.clear();
-        for (size_t i = 0; i < players.size(); ++i) {
-            std::optional<size_t> action = co_await players[i]->act(*this);
-            if (action.has_value()) {
-                results.emplace_back(i, action.value());
+        tasks.clear();
+
+        for (const auto &pl: players) {
+            tasks.push_back(pl->act(*this));
+        }
+
+        for (size_t i = 0; i < tasks.size(); ++i) {
+            if (auto act = co_await tasks[i]; act.has_value()) {
+                results.emplace_back(i, act.value());
             }
         }
 
-        auto mafia_votes = results | std::ranges::views::filter(
+        for (const auto &mafia: results | std::views::filter(
             [this](const auto &obj) { return check_role<Mafioso>(obj.first); }
+        )) {
+            ++votes[mafia.second];
+        }
+        auto mafia_decision = std::max_element(
+            votes.begin(),
+            votes.end(),
+            [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; }
         );
-        if (!mafia_votes.empty()) {
-            std::transform(
-                mafia_votes.begin(),
-                mafia_votes.end(),
-                std::inserter(votes, votes.begin()),
-                [&votes](const auto &obj) -> std::pair<size_t, size_t> {
-                    return {obj.second, ++votes[obj.second]};
-                }
+        if (mafia_decision != votes.end()) {
+            target = mafia_decision->first;
+            players[target]->alive = false;
+            msg = std::format(
+                "Player #{} ({}) got killed by the mafia.",
+                target, rolenames[typeid(*players[target])]
             );
-            auto mafia_decision = std::max_element(
-                votes.begin(),
-                votes.end(),
-                [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; }
-            );
-            players[mafia_decision->first]->alive = false;
-            std::clog << "Player #" << mafia_decision->first
-                    << " got killed by the mafia.\n";
+            std::cout << msg << '\n';
+            logger(cur_path, msg);
         }
 
-        auto maniac_decision = results | std::ranges::views::filter(
+        auto maniac_decision = results | std::views::filter(
             [this](const auto &obj) { return check_role<Maniac>(obj.first); }
         );
         if (!maniac_decision.empty()) {
-            players[maniac_decision.front().second]->alive = false;
-            std::clog << "Player #" << maniac_decision.front().second
-                      << " got killed by Maniac.\n";
+            target = maniac_decision.front().second;
+            players[target]->alive = false;
+            msg = std::format(
+                "Player #{} ({}) got killed by Maniac.",
+                target, rolenames[typeid(*players[target])]
+            );
+            std::cout << msg << '\n';
+            logger(cur_path, msg);
         }
 
-        auto sheriff_decision = results | std::ranges::views::filter(
+        auto sheriff_decision = results | std::views::filter(
             [this](const auto &obj) { return check_role<Sheriff>(obj.first); }
         );
         if (!sheriff_decision.empty()) {
-            players[sheriff_decision.front().second]->alive = false;
-            std::clog << "Player #" << sheriff_decision.front().second
-                      << " got killed by Sheriff.\n";
+            target = sheriff_decision.front().second;
+            players[target]->alive = false;
+            msg = std::format(
+                "Player #{} ({}) got killed by Sheriff.",
+                target, rolenames[typeid(*players[target])]
+            );
+            std::cout << msg << '\n';
+            logger(cur_path, msg);
         }
 
-        auto doctor_decision = results | std::ranges::views::filter(
+        auto doctor_decision = results | std::views::filter(
             [this](const auto &obj) { return check_role<Doctor>(obj.first); }
         );
         if (!doctor_decision.empty()) {
-            players[doctor_decision.front().second]->alive = true;
-            std::clog << "Player #" << doctor_decision.front().second
-                      << " got healed by Doctor.\n";
+            target = doctor_decision.front().second;
+            players[target]->alive = true;
+            msg = std::format(
+                "Player #{} ({}) got healed by Doctor.",
+                target, rolenames[typeid(*players[target])]
+            );
+            std::cout << msg << '\n';
+            logger(cur_path, msg);
         }
 
         if (finished()) {
-            std::clog << "Game over.\n";
             co_return;
         }
     }
 }
 
 bool Game::finished(void) const {
-    bool maniac_alive;
+    bool ans = false;
+    std::string msg;
+
+    bool maniac_alive = false;
     size_t mafioso_count = 0;
     size_t civilian_count = 0;
-    for (size_t i = 0; i < players.size(); ++i) {
-        if (check_role<Maniac>(i)) {
-            maniac_alive = players[i]->is_alive();
-        } else if (check_role<Mafioso>(i)) {
-            mafioso_count += players[i]->is_alive();
+
+    for (const auto &pl: players | std::views::filter(
+        [](auto &pl) { return pl->is_alive(); }
+    )) {
+        if (dynamic_cast<Maniac*>(pl.get())) {
+            maniac_alive = true;
+        } else if (dynamic_cast<Mafioso*>(pl.get())) {
+            ++mafioso_count;
         } else {
-            civilian_count += players[i]->is_alive();
+            ++civilian_count;
         }
     }
+
     if (mafioso_count + civilian_count + maniac_alive == 0) {
-        std::clog << "Drawn!\n";
-        return true;
+        msg = "Drawn!";
+        ans = true;
     } else if (mafioso_count == 0) {
         if (!maniac_alive) {
-            std::clog << "Civilians win!\n";
-            return true;
+            msg = "Civilians win!";
+            ans = true;
         } else if (civilian_count <= 1) {
-            std::clog << "Maniac wins!\n";
-            return true;
-        } else {
-            return false;
+            msg = "Maniac wins!";
+            ans = true;
         }
     } else if (!maniac_alive && mafioso_count >= civilian_count) {
-        std::clog << "Mafia wins!\n";
-        return true;
-    } else {
-        return false;
+        msg = "Mafia wins!";
+        ans = true;
     }
+
+    if (ans) {
+        std::cout << msg << '\n';
+        logger("total.txt", msg);
+    }
+    return ans;
 }
 
 size_t Mafioso::computer_vote(const Game &game) {
