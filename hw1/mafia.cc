@@ -169,7 +169,7 @@ Game::Game(size_t n_players, bool human)
 
     std::clog << '\n';
 
-    for (int i = 0; i < (n_players >> 2); ++i) {
+    for (size_t i = 0; i < n_players >> 2; ++i) {
         do {
             cur = random_choice();
         } while (players[cur]);
@@ -233,7 +233,7 @@ hw1::async<void> Game::start(void) {
         auto decision = std::max_element(
             counter.begin(),
             counter.end(),
-            [](auto &lhs, auto &rhs) { return lhs.second > rhs.second; }
+            [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; }
         );
 
         if (decision != counter.end()) {
@@ -261,7 +261,7 @@ hw1::async<void> Game::start(void) {
             [this](const auto &obj) { return check_role<Mafioso>(obj.first); }
         );
         if (!mafia_votes.empty()) {
-            auto mafia_counter = std::transform(
+            std::transform(
                 mafia_votes.begin(),
                 mafia_votes.end(),
                 std::inserter(counter, counter.begin()),
@@ -272,7 +272,7 @@ hw1::async<void> Game::start(void) {
             auto mafia_decision = std::max_element(
                 counter.begin(),
                 counter.end(),
-                [](auto &lhs, auto &rhs) { return lhs.second > rhs.second; }
+                [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; }
             );
             players[mafia_decision->first]->alive = false;
             std::clog << "Player #" << mafia_decision->first
