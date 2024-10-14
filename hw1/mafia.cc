@@ -18,6 +18,8 @@ class Game {
 public:
     Game(size_t, bool = false);
     const Player *operator[](size_t i) const { return players.at(i).get(); }
+    constexpr size_t n_players(void) const { return players.size(); }
+
     inline size_t random_choice(void) const;
     template<class Role>
     bool check_role(size_t i) const {
@@ -34,6 +36,8 @@ protected:
     bool human;
     bool alive;
 
+    size_t human_input(const Game&, const std::string&);
+
 public:
     Player(bool is_human = false)
         : human(is_human)
@@ -44,6 +48,33 @@ public:
     virtual hw1::async<std::optional<size_t>> vote(const Game&) = 0;
     virtual hw1::async<std::optional<size_t>> act(const Game&) = 0;
 };
+
+size_t Player::human_input(
+    const Game &game,
+    const std::string &prompt = "Choose a player to vote against: #"
+) {
+    size_t result;
+
+    auto cin_reader = [&, this] {
+        std::cin >> result;
+        if (std::cin.eof()) {
+            human = false;
+            throw std::string_view(
+                "\nEOF caught, leaving control to computer...\n"
+            );
+        }
+        result %= game.n_players();
+    };
+
+    std::cout << prompt;
+    cin_reader();
+    while (!game[result]->is_alive()) {
+        std::cout << "This player is dead or kicked out, "
+                  << "please choose once again: #";
+        cin_reader();
+    }
+    return result;
+}
 
 class Civilian: public Player {
 public:
@@ -291,9 +322,13 @@ hw1::async<std::optional<size_t>> Civilian::vote(const Game &game) {
     }
     size_t result;
     if (human) {
-        std::cout << "vote: ";
-        std::cin >> result;
-    } else {
+        try {
+            result = human_input(game);
+        } catch (const std::string_view &msg) {
+            std::cout << msg;
+        }
+    }
+    if (!human) {
         do {
             result = game.random_choice();
         } while (game[result] == this || !game[result]->is_alive());
@@ -307,14 +342,17 @@ hw1::async<std::optional<size_t>> Mafioso::vote(const Game &game) {
     }
     size_t result;
     if (human) {
-        std::cout << "vote: ";
-        std::cin >> result;
-    } else {
+        try {
+            result = human_input(game);
+        } catch (const std::string_view &msg) {
+            std::cout << msg;
+        }
+    }
+    if (!human) {
         do {
             result = game.random_choice();
         } while (
-            game.check_role<Mafioso>(result)
-            || !game[result]->is_alive()
+            game.check_role<Mafioso>(result) || !game[result]->is_alive()
         );
     }
     co_return result;
@@ -326,9 +364,13 @@ hw1::async<std::optional<size_t>> Sheriff::vote(const Game &game) {
     }
     size_t result;
     if (human) {
-        std::cout << "vote: ";
-        std::cin >> result;
-    } else {
+        try {
+            result = human_input(game);
+        } catch (const std::string_view &msg) {
+            std::cout << msg;
+        }
+    }
+    if (!human) {
         if (!has_target) {
             do {
                 result = game.random_choice();
@@ -350,9 +392,13 @@ hw1::async<std::optional<size_t>> Maniac::vote(const Game &game) {
     }
     size_t result;
     if (human) {
-        std::cout << "vote: ";
-        std::cin >> result;
-    } else {
+        try {
+            result = human_input(game);
+        } catch (const std::string_view &msg) {
+            std::cout << msg;
+        }
+    }
+    if (!human) {
         do {
             result = game.random_choice();
         } while (game[result] == this || !game[result]->is_alive());
