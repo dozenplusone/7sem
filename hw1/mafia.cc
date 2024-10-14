@@ -384,41 +384,45 @@ hw1::async<std::optional<size_t>> Sheriff::act(const Game &game) {
         co_return {};
     }
     size_t result;
+    bool shooting = false;
     if (human) {
-        std::optional<bool> shooting{};
-        do {
-            std::cout << "[c]heck or [s]hoot? ";
-            switch (std::getchar()) {
-            case 'c': case 'C':
-                shooting = false;
-                break;
-            case 's': case 'S':
-                shooting = true;
-                break;
+        char action{};
+
+        auto cin_reader = [&, this] {
+            std::cin >> action;
+            if (std::cin.eof()) {
+                human = false;
+                throw std::string_view(
+                    "\nEOF caught, leaving control to computer...\n"
+                );
             }
-        } while (!shooting.has_value());
-        std::cout << "vote: ";
-        std::cin >> result;
-        if (!shooting.value()) {
-            std::cout << "Player #" << result << " is";
-            if (!game.check_role<Mafioso>(result)) {
-                std::cout << " not";
-            }
-            std::cout << " a mafioso.\n";
-            co_return {};
-        } else {
-            co_return result;
+            action = tolower(action);
+        };
+
+        try {
+            do {
+                std::cout << "Would you [c]heck or [s]hoot this time? ";
+                cin_reader();
+            } while (action != 'c' && action != 's');
+            shooting = action == 's';
+            result = human_input(game, std::format(
+                "Choose a player to {}: #", shooting ? "shoot" : "check"
+            ));
+        } catch (const std::string_view &msg) {
+            std::cout << msg;
         }
-    } else {
+    }
+    if (!human) {
         if (has_target) {
-            has_target = false;
             result = last_checked.value();
-            last_checked = std::nullopt;
             if (game[result]->is_alive()) {
-                co_return result;
+                shooting = true;
+            } else {
+                has_target = false;
             }
         }
         if (!has_target) {
+            shooting = false;
             do {
                 result = game.random_choice();
             } while (
@@ -426,15 +430,23 @@ hw1::async<std::optional<size_t>> Sheriff::act(const Game &game) {
                 || !game[result]->is_alive()
                 || game[result] == this
             );
-            if (game.check_role<Mafioso>(result)) {
-                last_checked = result;
-                has_target = true;
-            } else {
-                civilians_checked.insert(result);
-            }
-            co_return {};
         }
     }
+    if (shooting) {
+        co_return result;
+    }
+    shooting = game.check_role<Mafioso>(result);
+    if (human) {
+        std::cout << "Player #" << result << " is"
+                  << (shooting ? "" : " not") << " a mafioso.\n";
+    }
+    if (shooting) {
+        last_checked = result;
+        has_target = true;
+    } else {
+        civilians_checked.insert(result);
+    }
+    co_return {};
 }
 
 hw1::async<std::optional<size_t>> Doctor::act(const Game &game) {
@@ -443,26 +455,43 @@ hw1::async<std::optional<size_t>> Doctor::act(const Game &game) {
     }
     size_t result;
     if (human) {
-        std::cout << "vote: ";
-        std::cin >> result;
-        while (last_cured.has_value() && last_cured == result) {
-            std::cout << "you can't\nvote: ";
-            std::cin >> result;
+        try {
+            result = human_input(game, "Choose a player to cure: #");
+            while (result == last_cured) {
+                result = human_input(
+                    game,
+                    "You cured them last night, please choose once again: #"
+                );
+            }
+        } catch (const std::string_view &msg) {
+            std::cout << msg;
         }
-    } else {
+    }
+    if (!human) {
         do {
             result = game.random_choice();
-        } while (
-            last_cured.has_value() && game[result] == game[last_cured.value()]
-            || !game[result]->is_alive()
-        );
+        } while (!game[result]->is_alive() || result == last_cured);
     }
     last_cured = result;
     co_return result;
 }
 
 hw1::async<std::optional<size_t>> Maniac::act(const Game &game) {
-    co_return co_await vote(game);
+    if (!alive) {
+        co_return {};
+    }
+    size_t result;
+    if (human) {
+        try {
+            result = human_input(game, "Choose a player to kill: #");
+        } catch (const std::string_view &msg) {
+            std::cout << msg;
+        }
+    }
+    if (!human) {
+        result = computer_vote(game);
+    }
+    co_return result;
 }
 
 int main(int argc, const char *argv[]) {
