@@ -1,4 +1,5 @@
 #include "async.h"
+#include "logging.h"
 #include "shared_ptr.h"
 
 #include <algorithm>
@@ -7,6 +8,7 @@
 #include <optional>
 #include <random>
 #include <ranges>
+#include <typeindex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -15,6 +17,8 @@ class Player;
 
 class Game {
     std::vector<hw1::shared_ptr<Player>> players;
+    static std::unordered_map<std::type_index, std::string_view> rolenames;
+    hw1::Logger logger;
 public:
     Game(size_t, bool = false);
     const Player *operator[](size_t i) const { return players.at(i).get(); }
@@ -162,50 +166,51 @@ public:
     hw1::async<std::optional<size_t>> act(const Game&) override;
 };
 
+std::unordered_map<std::type_index, std::string_view> Game::rolenames{
+    {typeid(Civilian), "Civilian"},
+    {typeid(Mafioso), "Mafioso"},
+    {typeid(Sheriff), "Sheriff"},
+    {typeid(Doctor), "Doctor"},
+    {typeid(Maniac), "Maniac"},
+};
+
 Game::Game(size_t n_players, bool human)
     : players(n_players, nullptr)
+    , logger(hw1::fs::current_path() / "logs")
 {
     size_t cur;
-
-    std::clog << '\n';
 
     for (size_t i = 0; i < n_players >> 2; ++i) {
         do {
             cur = random_choice();
         } while (players[cur]);
         players[cur] = hw1::shared_ptr<Player>(new Mafioso);
-        std::clog << "Player #" << cur << " is Mafioso\n";
     }
 
     do {
         cur = random_choice();
     } while (players[cur]);
     players[cur] = hw1::shared_ptr<Player>(new Sheriff);
-    std::clog << "Player #" << cur << " is Sheriff\n";
 
     do {
         cur = random_choice();
     } while (players[cur]);
     players[cur] = hw1::shared_ptr<Player>(new Doctor);
-    std::clog << "Player #" << cur << " is Doctor\n";
 
     do {
         cur = random_choice();
     } while (players[cur]);
     players[cur] = hw1::shared_ptr<Player>(new Maniac);
-    std::clog << "Player #" << cur << " is Maniac\n";
 
-    for (cur = 0; cur < n_players; ++cur) {
-        if (!players[cur]) {
-            players[cur] = hw1::shared_ptr<Player>(new Civilian);
-            std::clog << "Player #" << cur << " is Civilian\n";
-        }
+    for (auto &pl: players | std::views::filter([](auto pl) { return !pl; })) {
+        pl = hw1::shared_ptr<Player>(new Civilian);
     }
 
     if (human) {
         cur = random_choice();
         players[cur]->human = true;
-        std::clog << "Player #" << cur << " is human!\n";
+        std::cout << "You, Player #" << cur << ", are "
+                  << rolenames[typeid(*players[cur])] << ".\n";
     }
 }
 
@@ -217,39 +222,53 @@ size_t Game::random_choice(void) const {
 
 hw1::async<void> Game::start(void) {
     std::vector<std::pair<size_t, size_t>> results;
-    std::unordered_map<size_t, size_t> counter;
+    std::unordered_map<size_t, size_t> votes;
+    std::vector<hw1::async<std::optional<size_t>>> tasks;
+    std::string_view cur_path;
+    std::string msg;
     size_t day = 0;
+
     while (true) {
-        std::clog << ">>> Day #" << ++day << " <<<\n";
+        std::cout << ">>>  Day #" << ++day << "  <<<\n";
+        cur_path = std::format("day_{}.txt", day);
         results.clear();
-        counter.clear();
-        for (size_t i = 0; i < players.size(); ++i) {
-            std::optional<size_t> vote = co_await players[i]->vote(*this);
-            if (vote.has_value()) {
-                ++counter[vote.value()];
+        votes.clear();
+        tasks.clear();
+
+        for (const auto &pl: players) {
+            tasks.push_back(pl->vote(*this));
+        }
+
+        for (size_t i = 0; i < tasks.size(); ++i) {
+            if (auto vote = co_await tasks[i]; vote.has_value()) {
+                ++votes[vote.value()];
+                logger(cur_path, std::format(
+                    "Player #{} ({}) votes against Player #{} ({})",
+                    i,
+                    rolenames[typeid(*players[i])],
+                    vote.value(),
+                    rolenames[typeid(*players[vote.value()])]
+                ));
             }
         }
 
         auto decision = std::max_element(
-            counter.begin(),
-            counter.end(),
+            votes.begin(),
+            votes.end(),
             [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; }
         );
-
-        if (decision != counter.end()) {
-            players[decision->first]->alive = false;
-            std::clog << "Player #" << decision->first
-                      << " got kicked out.\n";
-        }
+        players[decision->first]->alive = false;
+        msg = std::format("Player #{} got kicked out.", decision->first);
+        std::cout << msg << '\n';
+        logger(cur_path, msg);
 
         if (finished()) {
-            std::clog << "Game over.\n";
             co_return;
         }
 
         std::clog << ">>> Night #" << day << " <<<\n";
         results.clear();
-        counter.clear();
+        votes.clear();
         for (size_t i = 0; i < players.size(); ++i) {
             std::optional<size_t> action = co_await players[i]->act(*this);
             if (action.has_value()) {
@@ -264,14 +283,14 @@ hw1::async<void> Game::start(void) {
             std::transform(
                 mafia_votes.begin(),
                 mafia_votes.end(),
-                std::inserter(counter, counter.begin()),
-                [&counter](const auto &obj) -> std::pair<size_t, size_t> {
-                    return {obj.second, ++counter[obj.second]};
+                std::inserter(votes, votes.begin()),
+                [&votes](const auto &obj) -> std::pair<size_t, size_t> {
+                    return {obj.second, ++votes[obj.second]};
                 }
             );
             auto mafia_decision = std::max_element(
-                counter.begin(),
-                counter.end(),
+                votes.begin(),
+                votes.end(),
                 [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; }
             );
             players[mafia_decision->first]->alive = false;
