@@ -19,7 +19,7 @@ class Game {
     std::vector<hw1::shared_ptr<Player>> players;
     static std::unordered_map<std::type_index, std::string_view> rolenames;
     hw1::Logger logger;
-    size_t day;
+    std::pair<bool, size_t> time;
 
 public:
     Game(size_t, bool = false);
@@ -35,13 +35,14 @@ public:
     hw1::async<void> start(void);
     bool finished(void) const;
 
-    void log(const std::string&, size_t, size_t, bool = true) const;
+    void log(const std::string&, size_t, size_t) const;
 };
 
 class Player {
     friend class Game;
 
 protected:
+    std::pair<bool, size_t> time;
     size_t this_id;
     bool human;
     bool alive;
@@ -130,7 +131,7 @@ std::unordered_map<std::type_index, std::string_view> Game::rolenames{
 Game::Game(size_t n_players, bool human)
     : players(n_players, nullptr)
     , logger(hw1::fs::current_path() / "logs")
-    , day{}
+    , time{}
 {
     size_t cur;
 
@@ -172,7 +173,7 @@ Game::Game(size_t n_players, bool human)
 }
 
 size_t Game::random_choice(void) const {
-    static std::mt19937_64 rng(time(nullptr));
+    static std::mt19937_64 rng(std::time(nullptr));
     static std::uniform_int_distribution<size_t> dist(0, players.size() - 1);
     return dist(rng);
 }
@@ -197,13 +198,29 @@ hw1::async<void> Game::start(void) {
         logger(cur_path, msg);
     };
 
+    auto log_who_alive = [&cur_path, this]{
+        logger(cur_path, "Players alive:");
+        for (auto &pl: players | std::views::filter(
+            [](const auto &obj) { return obj->is_alive(); }
+        )) {
+            logger(cur_path, std::format(
+                "#{} ({})",
+                pl->this_id, rolenames[typeid(*this->players[pl->this_id])]
+            ));
+            pl->time = this->time;
+        }
+    };
+
     while (true) {
-        std::cout << ">>>  Day #" << ++day << "  <<<\n";
-        cur_path = std::format("day_{}.txt", day);
+        time.first = false;
+        std::cout << ">>>  Day #" << ++time.second << "  <<<\n";
+        cur_path = std::format("day_{}.txt", time.second);
         results.clear();
         votes.clear();
         tasks.clear();
+        log_who_alive();
 
+        logger(cur_path, "\nActions:");
         for (const auto &pl: players) {
             tasks.push_back(pl->vote(*this));
         }
@@ -219,18 +236,22 @@ hw1::async<void> Game::start(void) {
             votes.end(),
             [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; }
         );
+        logger(cur_path, "\nResults:");
         kill_or_cure(day_decision->first, false, "got kicked out");
 
         if (finished()) {
             co_return;
         }
 
-        std::cout << ">>> Night #" << day << " <<<\n";
-        cur_path = std::format("night_{}.txt", day);
+        time.first = true;
+        std::cout << ">>> Night #" << time.second << " <<<\n";
+        cur_path = std::format("night_{}.txt", time.second);
         results.clear();
         votes.clear();
         tasks.clear();
+        log_who_alive();
 
+        logger(cur_path, "\nActions:");
         for (const auto &pl: players) {
             tasks.push_back(pl->act(*this));
         }
@@ -240,6 +261,7 @@ hw1::async<void> Game::start(void) {
                 results.emplace_back(i, act.value());
             }
         }
+        logger(cur_path, "\nResults:");
 
         for (const auto &mafia: results | std::views::filter(
             [this](const auto &obj) { return check_role<Mafioso>(obj.first); }
@@ -327,18 +349,33 @@ bool Game::finished(void) const {
     }
 
     if (ans) {
+        std::string_view cur_path = "total.txt";
+        logger(cur_path, "Players:");
+        for (auto &pl: players) {
+            logger(cur_path, std::format(
+                "#{}: {}{}, {}",
+                pl->this_id,
+                rolenames[typeid(*players[pl->this_id])],
+                pl->human ? ", human-driven" : "",
+                pl->alive ? "survived" : std::format(
+                    "{} at {} {}",
+                    pl->time.first ? "killed" : "kicked out",
+                    pl->time.first ? "Night" : "Day",
+                    pl->time.second
+                )
+            ));
+        }
+
         std::cout << msg << '\n';
-        logger("total.txt", msg);
+        logger(cur_path, "\nResults:");
+        logger(cur_path, msg);
     }
     return ans;
 }
 
-void Game::log(
-    const std::string &act, size_t src, size_t dst, bool is_night
-) const
-{
+void Game::log(const std::string &act, size_t src, size_t dst) const {
     logger(
-        std::format("{}_{}.txt", is_night ? "night" : "day", day),
+        std::format("{}_{}.txt", time.first ? "night" : "day", time.second),
         std::format(
             "Player #{} ({}) {} Player #{} ({})",
             src, rolenames[typeid(*players[src])], act,
@@ -397,7 +434,7 @@ hw1::async<std::optional<size_t>> Player::vote(const Game &game) {
     if (!human) {
         result = computer_vote(game);
     }
-    game.log("votes against", this_id, result, false);
+    game.log("votes against", this_id, result);
     co_return result;
 }
 
