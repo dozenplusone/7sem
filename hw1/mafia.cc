@@ -62,23 +62,37 @@ public:
 };
 
 class Civilian: public Player {
+protected:
+    size_t computer_vote(const Game &game) override {
+        return Player::computer_vote(game);
+    }
+
 public:
     Civilian(bool is_human = false)
         : Player(is_human)
     {}
-    size_t computer_vote(const Game &game) override {
-        return Player::computer_vote(game);
-    }
     hw1::async<std::optional<size_t>> act(const Game&) override;
 };
 
 class Mafioso: public Player {
+protected:
+    size_t computer_vote(const Game&) override;
+
 public:
     Mafioso(bool is_human = false)
         : Player(is_human)
     {}
-    size_t computer_vote(const Game&) override;
     hw1::async<std::optional<size_t>> act(const Game&) override;
+};
+
+class Bull: public Mafioso {
+public:
+    Bull(bool is_human = false): Mafioso(is_human) {}
+};
+
+class Ninja: public Mafioso {
+public:
+    Ninja(bool is_human = false): Mafioso(is_human) {}
 };
 
 class Sheriff: public Civilian {
@@ -97,6 +111,18 @@ public:
     hw1::async<std::optional<size_t>> act(const Game&) override;
 };
 
+class SheriffLover: public Civilian {
+protected:
+    std::unordered_set<size_t> checked;
+    bool ok;
+
+    size_t computer_vote(const Game&) override;
+
+public:
+    SheriffLover(bool is_human = false): Civilian(is_human), ok{} {}
+    hw1::async<std::optional<size_t>> act(const Game&) override;
+};
+
 class Doctor: public Civilian {
 protected:
     std::optional<size_t> last_cured;
@@ -110,20 +136,25 @@ public:
 };
 
 class Maniac: public Player {
+protected:
+    size_t computer_vote(const Game &game) override {
+        return Player::computer_vote(game);
+    }
+
 public:
     Maniac(bool is_human = false)
         : Player(is_human)
     {}
-    size_t computer_vote(const Game &game) override {
-        return Player::computer_vote(game);
-    }
     hw1::async<std::optional<size_t>> act(const Game&) override;
 };
 
 std::unordered_map<std::type_index, std::string_view> Game::rolenames{
     {typeid(Civilian), "Civilian"},
     {typeid(Mafioso), "Mafioso"},
+    {typeid(Bull), "Bull"},
+    {typeid(Ninja), "Ninja"},
     {typeid(Sheriff), "Sheriff"},
+    {typeid(SheriffLover), "Sheriff's Lover"},
     {typeid(Doctor), "Doctor"},
     {typeid(Maniac), "Maniac"},
 };
@@ -135,7 +166,26 @@ Game::Game(size_t n_players, bool human)
 {
     size_t cur;
 
-    for (size_t i = 0; i < n_players >> 2; ++i) {
+    size_t mafioso_count = n_players >> 2;
+    size_t others_count = n_players - mafioso_count;
+
+    if (mafioso_count > 1) {
+        do {
+            cur = random_choice();
+        } while (players[cur]);
+        players[cur] = hw1::shared_ptr<Player>(new Bull);
+        --mafioso_count;
+    }
+
+    if (mafioso_count > 1) {
+        do {
+            cur = random_choice();
+        } while (players[cur]);
+        players[cur] = hw1::shared_ptr<Player>(new Ninja);
+        --mafioso_count;
+    }
+
+    for (size_t i = 0; i < mafioso_count; ++i) {
         do {
             cur = random_choice();
         } while (players[cur]);
@@ -146,16 +196,27 @@ Game::Game(size_t n_players, bool human)
         cur = random_choice();
     } while (players[cur]);
     players[cur] = hw1::shared_ptr<Player>(new Sheriff);
+    --others_count;
 
     do {
         cur = random_choice();
     } while (players[cur]);
     players[cur] = hw1::shared_ptr<Player>(new Doctor);
+    --others_count;
 
     do {
         cur = random_choice();
     } while (players[cur]);
     players[cur] = hw1::shared_ptr<Player>(new Maniac);
+    --others_count;
+
+    if (others_count > 3) {
+        do {
+            cur = random_choice();
+        } while (players[cur]);
+        players[cur] = hw1::shared_ptr<Player>(new SheriffLover);
+        --others_count;
+    }
 
     for (cur = 0; cur < n_players; ++cur) {
         if (!players[cur]) {
@@ -279,9 +340,10 @@ hw1::async<void> Game::start(void) {
             [this](const auto &obj) { return check_role<Maniac>(obj.first); }
         );
         if (!maniac_decision.empty()) {
-            kill_player(
-                maniac_decision.front().second, "got killed by Maniac"
-            );
+            size_t target = maniac_decision.front().second;
+            if (!check_role<Bull>(target)) {
+                kill_player(target, "got killed by Maniac");
+            }
         }
 
         auto sheriff_decision = results | std::views::filter(
@@ -462,6 +524,18 @@ size_t Sheriff::computer_vote(const Game &game) {
     return result;
 }
 
+size_t SheriffLover::computer_vote(const Game &game) {
+    size_t result;
+    do {
+        result = game.random_choice();
+    } while (
+        !game[result]->is_alive() 
+        || game.check_role<Sheriff>(result)
+        || game[result] == this
+    );
+    return result;
+}
+
 hw1::async<std::optional<size_t>> Civilian::act(const Game&) {
     co_return {};
 }
@@ -542,7 +616,8 @@ hw1::async<std::optional<size_t>> Sheriff::act(const Game &game) {
     if (shooting) {
         co_return result;
     }
-    shooting = game.check_role<Mafioso>(result);
+    shooting = game.check_role<Mafioso>(result)
+                && !game.check_role<Ninja>(result);
     if (human) {
         std::cout << "Player #" << result << " is"
                   << (shooting ? "" : " not") << " a mafioso.\n";
@@ -552,6 +627,38 @@ hw1::async<std::optional<size_t>> Sheriff::act(const Game &game) {
         has_target = true;
     } else {
         civilians_checked.insert(result);
+    }
+    co_return {};
+}
+
+hw1::async<std::optional<size_t>> SheriffLover::act(const Game &game) {
+    if (alive && !ok) {
+        size_t result;
+        if (human) {
+            try {
+                result = human_input(game, "Choose a player to check: #");
+            } catch (const std::string_view &msg) {
+                std::cout << msg;
+            }
+        }
+        if (!human) {
+            do {
+                result = game.random_choice();
+            } while (
+                checked.contains(result)
+                || !game[result]->is_alive()
+                || game[result] == this
+            );
+        }
+        ok = game.check_role<Sheriff>(result);
+        if (!ok) {
+            checked.insert(result);
+        }
+        if (human) {
+            std::cout << "Player #" << result << " is"
+                      << (ok ? "" : " not") << " Sheriff.\n";
+        }
+        game.log("checks", this_id, result);
     }
     co_return {};
 }
@@ -599,7 +706,7 @@ hw1::async<std::optional<size_t>> Maniac::act(const Game &game) {
     if (!human) {
         result = computer_vote(game);
     }
-    game.log("kills", this_id, result);
+    game.log("shoots", this_id, result);
     co_return result;
 }
 
