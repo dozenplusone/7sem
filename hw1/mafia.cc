@@ -19,6 +19,8 @@ class Game {
     std::vector<hw1::shared_ptr<Player>> players;
     static std::unordered_map<std::type_index, std::string_view> rolenames;
     hw1::Logger logger;
+    size_t day;
+
 public:
     Game(size_t, bool = false);
     const Player *operator[](size_t i) const { return players.at(i).get(); }
@@ -29,14 +31,18 @@ public:
     bool check_role(size_t i) const {
         return !!dynamic_cast<Role*>(players.at(i).get());
     }
+
     hw1::async<void> start(void);
     bool finished(void) const;
+
+    void log(const std::string&, size_t, size_t, bool = true) const;
 };
 
 class Player {
     friend class Game;
 
 protected:
+    size_t this_id;
     bool human;
     bool alive;
 
@@ -53,59 +59,6 @@ public:
     virtual hw1::async<std::optional<size_t>> vote(const Game&);
     virtual hw1::async<std::optional<size_t>> act(const Game&) = 0;
 };
-
-size_t Player::human_input(
-    const Game &game,
-    const std::string &prompt = "Choose a player to vote against: #"
-) {
-    size_t result;
-
-    auto cin_reader = [&, this] {
-        std::cin >> result;
-        if (std::cin.eof()) {
-            human = false;
-            throw std::string_view(
-                "\nEOF caught, leaving control to computer...\n"
-            );
-        }
-        result %= game.n_players();
-    };
-
-    std::cout << prompt;
-    cin_reader();
-    while (!game[result]->is_alive()) {
-        std::cout << "This player is dead or kicked out, "
-                  << "please choose once again: #";
-        cin_reader();
-    }
-    return result;
-}
-
-size_t Player::computer_vote(const Game &game) {
-    size_t result;
-    do {
-        result = game.random_choice();
-    } while (!game[result]->is_alive() || game[result] == this);
-    return result;
-}
-
-hw1::async<std::optional<size_t>> Player::vote(const Game &game) {
-    if (!alive) {
-        co_return {};
-    }
-    size_t result;
-    if (human) {
-        try {
-            result = human_input(game);
-        } catch (const std::string_view &msg) {
-            std::cout << msg;
-        }
-    }
-    if (!human) {
-        result = computer_vote(game);
-    }
-    co_return result;
-}
 
 class Civilian: public Player {
 public:
@@ -177,6 +130,7 @@ std::unordered_map<std::type_index, std::string_view> Game::rolenames{
 Game::Game(size_t n_players, bool human)
     : players(n_players, nullptr)
     , logger(hw1::fs::current_path() / "logs")
+    , day{}
 {
     size_t cur;
 
@@ -202,8 +156,11 @@ Game::Game(size_t n_players, bool human)
     } while (players[cur]);
     players[cur] = hw1::shared_ptr<Player>(new Maniac);
 
-    for (auto &pl: players | std::views::filter([](auto pl) { return !pl; })) {
-        pl = hw1::shared_ptr<Player>(new Civilian);
+    for (cur = 0; cur < n_players; ++cur) {
+        if (!players[cur]) {
+            players[cur] = hw1::shared_ptr<Player>(new Civilian);
+        }
+        players[cur]->this_id = cur;
     }
 
     if (human) {
@@ -225,9 +182,20 @@ hw1::async<void> Game::start(void) {
     std::unordered_map<size_t, size_t> votes;
     std::vector<hw1::async<std::optional<size_t>>> tasks;
     std::string_view cur_path;
-    std::string msg;
-    size_t day = 0;
-    size_t target;
+
+    auto kill_or_cure = [&cur_path, this](
+        size_t target,
+        bool make_alive,
+        const std::string &text
+    ) {
+        std::string msg = std::format(
+            "Player #{} ({}) {}.",
+            target, rolenames[typeid(*this->players[target])], text
+        );
+        players[target]->alive = make_alive;
+        std::cout << msg << '\n';
+        logger(cur_path, msg);
+    };
 
     while (true) {
         std::cout << ">>>  Day #" << ++day << "  <<<\n";
@@ -242,13 +210,7 @@ hw1::async<void> Game::start(void) {
 
         for (size_t i = 0; i < tasks.size(); ++i) {
             if (auto vote = co_await tasks[i]; vote.has_value()) {
-                target = vote.value();
-                ++votes[target];
-                logger(cur_path, std::format(
-                    "Player #{} ({}) votes against Player #{} ({})",
-                    i, rolenames[typeid(*players[i])],
-                    target, rolenames[typeid(*players[target])]
-                ));
+                ++votes[vote.value()];
             }
         }
 
@@ -257,14 +219,7 @@ hw1::async<void> Game::start(void) {
             votes.end(),
             [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; }
         );
-        target = day_decision->first;
-        players[target]->alive = false;
-        msg = std::format(
-            "Player #{} ({}) got kicked out.",
-            target, rolenames[typeid(*players[target])]
-        );
-        std::cout << msg << '\n';
-        logger(cur_path, msg);
+        kill_or_cure(day_decision->first, false, "got kicked out");
 
         if (finished()) {
             co_return;
@@ -297,56 +252,36 @@ hw1::async<void> Game::start(void) {
             [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; }
         );
         if (mafia_decision != votes.end()) {
-            target = mafia_decision->first;
-            players[target]->alive = false;
-            msg = std::format(
-                "Player #{} ({}) got killed by the mafia.",
-                target, rolenames[typeid(*players[target])]
+            kill_or_cure(
+                mafia_decision->first, false, "got killed by the mafia"
             );
-            std::cout << msg << '\n';
-            logger(cur_path, msg);
         }
 
         auto maniac_decision = results | std::views::filter(
             [this](const auto &obj) { return check_role<Maniac>(obj.first); }
         );
         if (!maniac_decision.empty()) {
-            target = maniac_decision.front().second;
-            players[target]->alive = false;
-            msg = std::format(
-                "Player #{} ({}) got killed by Maniac.",
-                target, rolenames[typeid(*players[target])]
+            kill_or_cure(
+                maniac_decision.front().second, false, "got killed by Maniac"
             );
-            std::cout << msg << '\n';
-            logger(cur_path, msg);
         }
 
         auto sheriff_decision = results | std::views::filter(
             [this](const auto &obj) { return check_role<Sheriff>(obj.first); }
         );
         if (!sheriff_decision.empty()) {
-            target = sheriff_decision.front().second;
-            players[target]->alive = false;
-            msg = std::format(
-                "Player #{} ({}) got killed by Sheriff.",
-                target, rolenames[typeid(*players[target])]
+            kill_or_cure(
+                sheriff_decision.front().second, false, "got killed by Sheriff"
             );
-            std::cout << msg << '\n';
-            logger(cur_path, msg);
         }
 
         auto doctor_decision = results | std::views::filter(
             [this](const auto &obj) { return check_role<Doctor>(obj.first); }
         );
         if (!doctor_decision.empty()) {
-            target = doctor_decision.front().second;
-            players[target]->alive = true;
-            msg = std::format(
-                "Player #{} ({}) got healed by Doctor.",
-                target, rolenames[typeid(*players[target])]
+            kill_or_cure(
+                doctor_decision.front().second, true, "got healed by Doctor"
             );
-            std::cout << msg << '\n';
-            logger(cur_path, msg);
         }
 
         if (finished()) {
@@ -398,6 +333,74 @@ bool Game::finished(void) const {
     return ans;
 }
 
+void Game::log(
+    const std::string &act, size_t src, size_t dst, bool is_night
+) const
+{
+    logger(
+        std::format("{}_{}.txt", is_night ? "night" : "day", day),
+        std::format(
+            "Player #{} ({}) {} Player #{} ({})",
+            src, rolenames[typeid(*players[src])], act,
+            dst, rolenames[typeid(*players[dst])]
+        )
+    );
+}
+
+size_t Player::human_input(
+    const Game &game,
+    const std::string &prompt = "Choose a player to vote against: #"
+) {
+    size_t result;
+
+    auto cin_reader = [&, this] {
+        std::cin >> result;
+        if (std::cin.eof()) {
+            human = false;
+            throw std::string_view(
+                "\nEOF caught, leaving control to computer...\n"
+            );
+        }
+        result %= game.n_players();
+    };
+
+    std::cout << prompt;
+    cin_reader();
+    while (!game[result]->is_alive()) {
+        std::cout << "This player is dead or kicked out, "
+                  << "please choose once again: #";
+        cin_reader();
+    }
+    return result;
+}
+
+size_t Player::computer_vote(const Game &game) {
+    size_t result;
+    do {
+        result = game.random_choice();
+    } while (!game[result]->is_alive() || game[result] == this);
+    return result;
+}
+
+hw1::async<std::optional<size_t>> Player::vote(const Game &game) {
+    if (!alive) {
+        co_return {};
+    }
+    size_t result;
+    if (human) {
+        try {
+            result = human_input(game);
+        } catch (const std::string_view &msg) {
+            std::cout << msg;
+        }
+    }
+    if (!human) {
+        result = computer_vote(game);
+    }
+    game.log("votes against", this_id, result, false);
+    co_return result;
+}
+
 size_t Mafioso::computer_vote(const Game &game) {
     size_t result;
     do {
@@ -427,7 +430,22 @@ hw1::async<std::optional<size_t>> Civilian::act(const Game&) {
 }
 
 hw1::async<std::optional<size_t>> Mafioso::act(const Game &game) {
-    co_return co_await vote(game);
+    if (!alive) {
+        co_return {};
+    }
+    size_t result;
+    if (human) {
+        try {
+            result = human_input(game);
+        } catch (const std::string_view &msg) {
+            std::cout << msg;
+        }
+    }
+    if (!human) {
+        result = computer_vote(game);
+    }
+    game.log("decides to kill", this_id, result);
+    co_return result;
 }
 
 hw1::async<std::optional<size_t>> Sheriff::act(const Game &game) {
@@ -483,6 +501,7 @@ hw1::async<std::optional<size_t>> Sheriff::act(const Game &game) {
             );
         }
     }
+    game.log(shooting ? "shoots" : "checks", this_id, result);
     if (shooting) {
         co_return result;
     }
@@ -524,6 +543,7 @@ hw1::async<std::optional<size_t>> Doctor::act(const Game &game) {
         } while (!game[result]->is_alive() || result == last_cured);
     }
     last_cured = result;
+    game.log("cures", this_id, result);
     co_return result;
 }
 
@@ -542,6 +562,7 @@ hw1::async<std::optional<size_t>> Maniac::act(const Game &game) {
     if (!human) {
         result = computer_vote(game);
     }
+    game.log("kills", this_id, result);
     co_return result;
 }
 
