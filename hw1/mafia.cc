@@ -184,16 +184,14 @@ hw1::async<void> Game::start(void) {
     std::vector<hw1::async<std::optional<size_t>>> tasks;
     std::string_view cur_path;
 
-    auto kill_or_cure = [&cur_path, this](
-        size_t target,
-        bool make_alive,
-        const std::string &text
+    auto kill_player = [&cur_path, this](
+        size_t target, const std::string &text
     ) {
         std::string msg = std::format(
             "Player #{} ({}) {}.",
             target, rolenames[typeid(*this->players[target])], text
         );
-        players[target]->alive = make_alive;
+        players[target]->alive = false;
         std::cout << msg << '\n';
         logger(cur_path, msg);
     };
@@ -237,7 +235,7 @@ hw1::async<void> Game::start(void) {
             [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; }
         );
         logger(cur_path, "\nResults:");
-        kill_or_cure(day_decision->first, false, "got kicked out");
+        kill_player(day_decision->first, "got kicked out");
 
         if (finished()) {
             co_return;
@@ -274,17 +272,15 @@ hw1::async<void> Game::start(void) {
             [](auto &lhs, auto &rhs) { return lhs.second < rhs.second; }
         );
         if (mafia_decision != votes.end()) {
-            kill_or_cure(
-                mafia_decision->first, false, "got killed by the mafia"
-            );
+            kill_player(mafia_decision->first, "got killed by the mafia");
         }
 
         auto maniac_decision = results | std::views::filter(
             [this](const auto &obj) { return check_role<Maniac>(obj.first); }
         );
         if (!maniac_decision.empty()) {
-            kill_or_cure(
-                maniac_decision.front().second, false, "got killed by Maniac"
+            kill_player(
+                maniac_decision.front().second, "got killed by Maniac"
             );
         }
 
@@ -292,8 +288,8 @@ hw1::async<void> Game::start(void) {
             [this](const auto &obj) { return check_role<Sheriff>(obj.first); }
         );
         if (!sheriff_decision.empty()) {
-            kill_or_cure(
-                sheriff_decision.front().second, false, "got killed by Sheriff"
+            kill_player(
+                sheriff_decision.front().second, "got killed by Sheriff"
             );
         }
 
@@ -301,9 +297,13 @@ hw1::async<void> Game::start(void) {
             [this](const auto &obj) { return check_role<Doctor>(obj.first); }
         );
         if (!doctor_decision.empty()) {
-            kill_or_cure(
-                doctor_decision.front().second, true, "got healed by Doctor"
-            );
+            size_t target = doctor_decision.front().second;
+            players[target]->alive = true;
+            std::cout << "Player #" << target << " got healed by Doctor.\n";
+            logger(cur_path, std::format(
+                "Player #{} ({}) got healed by Doctor.",
+                target, rolenames[typeid(*players[target])]
+            ));
         }
 
         if (finished()) {
