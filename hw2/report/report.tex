@@ -1,0 +1,76 @@
+\documentclass[12pt]{article}
+\usepackage[left=2cm,right=2cm,top=2cm,bottom=2cm,bindingoffset=0cm]{geometry}
+\usepackage[utf8x]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath}
+\usepackage{hyperref}
+
+\title{Задача оптимизации расписания с использованием алгоритма имитации отжига}
+\author{Забровский Валерий Владимирович}
+\date{Вариант 1}
+
+\begin{document}
+\maketitle
+
+\section*{Формальная постановка задачи}
+
+\subsection*{Дано}
+\begin{itemize}
+    \item множество независимых работ $W = \{W_i\}_{i=1}^{N}$;
+    \item время выполнения $t_i$ работы $W_i$, $i = \overline{1, N}$;
+    \item множество процессоров $P = \{p_i\}_{i=1}^{M}$.
+\end{itemize}
+
+\subsection*{Требуется}
+Построить расписание выполнения работ $W$ на $M$ процессорах без прерываний так,
+что достигается минимум критерия~\hyperref[crit]{$K_1$}.
+
+\subsection*{Расписание}
+
+Расписание представлено в виде булевой матрицы $S \in \{0, 1\}^{M \times N}$,
+причём $S_{ij} = 1$, если на процессоре $p_i$ выполняется работа $W_j$,
+и $S_{ij} = 0$ иначе.
+
+Для каждого процессора $p_i$, $i = \overline{1, M}$, введём множество
+всех работ, определённых на выполнение на данном процессоре:
+\begin{equation}
+    \Pi_i = \bigcup\limits_{\substack{j=1 \\ S_{ij}=1}}^N \{W_j\}.
+\end{equation}
+При этом $\bigcup\limits_{i=1}^M \Pi_i = W$.
+
+Для каждой работы $W_j$, $j = \overline{1, N}$, обозначим время начала и конца
+выполнения через $T_B(W_j)$ и $T_E(W_j)$ соответственно.
+При этом $0 \leq T_B(W_j) \leq T_E(W_j)$.
+
+\subsection*{Минимизируемый критерий}
+\label{crit}
+Разбалансированность расписания
+\begin{equation}
+    K_1 = T_{\max} - T_{\min},
+\end{equation}
+\begin{equation}
+    T_{\max} = \max_{j = \overline{1, N}} T_E(W_j),
+\end{equation}
+\begin{equation}
+    T_{\min} = \min_{j = \overline{1, N}} T_E(W_j).
+\end{equation}
+
+\subsection*{Ограничения}
+Каждая работа $W_j$, $\forall j = \overline{1, N}$:
+\begin{itemize}
+    \item выполняется без прерываний, т.е.
+    \begin{equation}
+        T_E(W_j) = T_B(W_j) + t_j
+    \end{equation}
+    и
+    \begin{equation}
+        \forall p_i~(|\Pi_i| > 0)~\exists! W_k \in \Pi_i: T_B(W_k) = 0,
+    \end{equation}
+
+    \item выполняется строго на одном процессоре, т.е.
+    $\exists! p_i \in P: S_{ij} = 1;$
+
+    \item имеет фиксированное время выполнения: $t_j = \text{const}$.
+\end{itemize}
+
+\end{document}
