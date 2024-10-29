@@ -25,13 +25,13 @@ class hw2::Annealing {
     Cooldown *cooldown;
 
 public:
-    Annealing(Solution *init, Mutation *mut, Cooldown *cd)
-        : best(init)
+    Annealing(Mutation *mut, Cooldown *cd)
+        : best(nullptr)
         , mutation(mut)
         , cooldown(cd)
     {}
 
-    Solution *run(void);
+    Solution *run(Solution*);
 };
 
 class hw2::Solution {
@@ -91,11 +91,11 @@ public:
     }
 };
 
-hw2::Solution *hw2::Annealing::run(void) {
+hw2::Solution *hw2::Annealing::run(Solution *init) {
     std::mt19937 gen(std::time(nullptr));
     std::uniform_real_distribution<> rand(0., 1.);
 
-    Solution *sol_cur = best->copy();
+    Solution *sol_cur = init->copy();
     double crit_cur = sol_cur->criterion();
     unsigned not_improved = 0u;
 
@@ -113,7 +113,7 @@ hw2::Solution *hw2::Annealing::run(void) {
 
         delete sol_new;
 
-        if (crit_cur < best->criterion()) {
+        if (!best || crit_cur < best->criterion()) {
             delete best;
             best = sol_cur->copy();
         } else {
