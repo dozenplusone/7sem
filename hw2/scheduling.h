@@ -4,6 +4,7 @@
 #include "annealing.h"
 
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 namespace Scheduling {
@@ -51,6 +52,31 @@ Scheduling::Solution::Solution(
             desc = !desc;
         }
     }
+}
+
+double Scheduling::Solution::criterion(void) const {
+    double min = std::numeric_limits<double>::max();
+    double max = 0.;
+    for (const auto &proc: schedule) {
+        double cur_min = 0.;
+        double cur_max = 0.;
+        for (unsigned i{}; i < proc.size(); ++i) {
+            if (!proc[i]) {
+                continue;
+            }
+            if (times[i] > cur_min) {
+                cur_min = times[i];
+            }
+            cur_max += times[i];
+        }
+        if (cur_min < min) {
+            min = cur_min;
+        }
+        if (cur_max > max) {
+            max = cur_max;
+        }
+    }
+    return max - min;
 }
 
 #endif // _HW2_SCHEDULING_H
