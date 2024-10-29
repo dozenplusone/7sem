@@ -2,7 +2,6 @@
 #define _HW2_ANNEALING_H
 
 #include <cmath>
-#include <ctime>
 #include <random>
 
 namespace hw2 {
@@ -92,8 +91,9 @@ public:
 };
 
 hw2::Solution *hw2::Annealing::run(Solution *init) {
-    std::mt19937 gen(std::time(nullptr));
-    std::uniform_real_distribution<> rand(0., 1.);
+    std::random_device rd;
+    std::mt19937 rng(rd());
+    std::uniform_real_distribution dist(0., 1.);
 
     Solution *sol_cur = init->copy();
     double crit_cur = sol_cur->criterion();
@@ -106,7 +106,7 @@ hw2::Solution *hw2::Annealing::run(Solution *init) {
         double temp = cooldown->get_temp(it);
         double _diff = crit_cur - crit_new;
 
-        if (_diff >= 0 || rand(gen) < std::exp(_diff / temp)) {
+        if (_diff >= 0 || dist(rng) < std::exp(_diff / temp)) {
             std::swap(sol_cur, sol_new);
             crit_cur = crit_new;
         }
