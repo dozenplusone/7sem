@@ -65,7 +65,10 @@ public:
     ~Boltzmann() = default;
 
     double get_temp(unsigned it) const override {
-        return it ? temp0 / std::log(1. + it) : temp0;
+        if (it) {
+            return temp0 / std::log(1. + it);
+        }
+        return temp0;
     }
 };
 
@@ -75,7 +78,10 @@ public:
     ~Cauchy() = default;
 
     double get_temp(unsigned it) const override {
-        return it ? temp0 / (1. + it) : temp0;
+        if (it) {
+            return temp0 / (1. + it);
+        }
+        return temp0;
     }
 };
 
@@ -85,14 +91,16 @@ public:
     ~LogCauchy() = default;
 
     double get_temp(unsigned it) const override {
-        double itp1 = 1. + it;
-        return it ? temp0 * std::log(itp1) / itp1 : temp0;
+        if (it) {
+            double itp1 = 1. + it;
+            return temp0 * std::log(itp1) / itp1;
+        }
+        return temp0;
     }
 };
 
 hw2::Solution *hw2::Annealing::run(Solution *init) {
-    std::random_device rd;
-    std::mt19937 rng(rd());
+    std::mt19937 rng(std::random_device{}());
     std::uniform_real_distribution dist(0., 1.);
 
     Solution *sol_cur = init->copy();
@@ -106,7 +114,7 @@ hw2::Solution *hw2::Annealing::run(Solution *init) {
         double temp = cooldown->get_temp(it);
         double _diff = crit_cur - crit_new;
 
-        if (_diff >= 0 || dist(rng) < std::exp(_diff / temp)) {
+        if (_diff >= 0. || dist(rng) < std::exp(_diff / temp)) {
             std::swap(sol_cur, sol_new);
             crit_cur = crit_new;
         }

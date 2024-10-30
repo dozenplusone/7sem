@@ -38,7 +38,7 @@ Scheduling::Solution::Solution(
     , times(work_times)
 {
     std::vector<unsigned> idx(times.size());
-    std::iota(idx.begin(), idx.end(), 0);
+    std::iota(idx.begin(), idx.end(), 0u);
     std::sort(
         idx.begin(), idx.end(),
         [this](auto i, auto j) { return times[i] < times[j]; }
@@ -59,33 +59,39 @@ Scheduling::Solution::Solution(
 double Scheduling::Solution::criterion(void) const {
     double min = std::numeric_limits<double>::max();
     double max = 0.;
+
     for (const auto &proc: schedule) {
         double cur_min = 0.;
         double cur_max = 0.;
-        for (unsigned i{}; i < proc.size(); ++i) {
-            if (!proc[i]) {
+
+        for (unsigned work = 0u; work < proc.size(); ++work) {
+            if (!proc[work]) {
                 continue;
             }
-            if (times[i] > cur_min) {
-                cur_min = times[i];
+
+            if (times[work] > cur_min) {
+                cur_min = times[work];
             }
-            cur_max += times[i];
+
+            cur_max += times[work];
         }
+
         if (cur_min < min) {
             min = cur_min;
         }
+
         if (cur_max > max) {
             max = cur_max;
         }
     }
+
     return max - min;
 }
 
 hw2::Solution *Scheduling::Mutation::mutate(hw2::Solution *sol) {
     Solution *ans = dynamic_cast<Solution*>(sol->copy());
 
-    std::random_device rd;
-    std::mt19937 rng(rd());
+    std::mt19937 rng(std::random_device{}());
     std::uniform_int_distribution<unsigned> dist_work(
         0u, ans->times.size() - 1u
     );
@@ -113,6 +119,5 @@ hw2::Solution *Scheduling::Mutation::mutate(hw2::Solution *sol) {
 
     return ans;
 }
-
 
 #endif // _HW2_SCHEDULING_H
