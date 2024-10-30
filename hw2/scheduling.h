@@ -25,7 +25,7 @@ public:
     hw2::Solution *copy(void) const override { return new Solution(*this); }
 };
 
-class Scheduling::Mutation: protected hw2::Mutation {
+class Scheduling::Mutation: public hw2::Mutation {
 public:
     hw2::Solution *mutate(hw2::Solution*) override;
 };

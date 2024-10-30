@@ -59,7 +59,7 @@ public:
     virtual double get_temp(unsigned) const = 0;
 };
 
-class hw2::BasicCD::Boltzmann final: protected hw2::Cooldown {
+class hw2::BasicCD::Boltzmann final: public hw2::Cooldown {
 public:
     Boltzmann(double init): Cooldown(init) {}
     ~Boltzmann() = default;
@@ -72,7 +72,7 @@ public:
     }
 };
 
-class hw2::BasicCD::Cauchy final: protected hw2::Cooldown {
+class hw2::BasicCD::Cauchy final: public hw2::Cooldown {
 public:
     Cauchy(double init): Cooldown(init) {}
     ~Cauchy() = default;
@@ -85,7 +85,7 @@ public:
     }
 };
 
-class hw2::BasicCD::LogCauchy final: protected hw2::Cooldown {
+class hw2::BasicCD::LogCauchy final: public hw2::Cooldown {
 public:
     LogCauchy(double init): Cooldown(init) {}
     ~LogCauchy() = default;
