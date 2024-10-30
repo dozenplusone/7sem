@@ -10,6 +10,9 @@
 namespace Scheduling {
     class Solution;
     class Mutation;
+
+    using SolutionPtr = std::shared_ptr<Solution>;
+    using MutationPtr = std::shared_ptr<Mutation>;
 }
 
 class Scheduling::Solution: public hw2::Solution {
@@ -22,12 +25,11 @@ public:
     Solution(unsigned, const std::vector<unsigned>&);
 
     double criterion(void) const override;
-    hw2::Solution *copy(void) const override { return new Solution(*this); }
 };
 
 class Scheduling::Mutation: public hw2::Mutation {
 public:
-    hw2::Solution *mutate(hw2::Solution*) override;
+    hw2::SolutionPtr mutate(hw2::SolutionPtr) override;
 };
 
 Scheduling::Solution::Solution(
@@ -88,8 +90,10 @@ double Scheduling::Solution::criterion(void) const {
     return max - min;
 }
 
-hw2::Solution *Scheduling::Mutation::mutate(hw2::Solution *sol) {
-    Solution *ans = dynamic_cast<Solution*>(sol->copy());
+hw2::SolutionPtr Scheduling::Mutation::mutate(hw2::SolutionPtr sol) {
+    SolutionPtr ans = std::make_shared<Solution>(
+        *std::dynamic_pointer_cast<Solution>(sol)
+    );
 
     std::mt19937 rng(std::random_device{}());
     std::uniform_int_distribution<unsigned> dist_work(

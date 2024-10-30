@@ -2,6 +2,7 @@
 #define _HW2_ANNEALING_H
 
 #include <cmath>
+#include <memory>
 #include <random>
 
 namespace hw2 {
@@ -16,21 +17,25 @@ namespace hw2 {
         class Cauchy;
         class LogCauchy;
     }
+
+    using SolutionPtr = std::shared_ptr<Solution>;
+    using MutationPtr = std::shared_ptr<Mutation>;
+    using CooldownPtr = std::shared_ptr<Cooldown>;
 } // namespace hw2
 
 class hw2::Annealing {
-    Solution *best;
-    Mutation *mutation;
-    Cooldown *cooldown;
+    SolutionPtr best;
+    MutationPtr mutation;
+    CooldownPtr cooldown;
 
 public:
-    Annealing(Mutation *mut, Cooldown *cd)
+    Annealing(MutationPtr mut, CooldownPtr cd)
         : best(nullptr)
         , mutation(mut)
         , cooldown(cd)
     {}
 
-    Solution *run(Solution*);
+    SolutionPtr run(SolutionPtr);
 };
 
 class hw2::Solution {
@@ -38,14 +43,13 @@ public:
     virtual ~Solution() = default;
 
     virtual double criterion(void) const = 0;
-    virtual Solution *copy(void) const = 0;
 };
 
 class hw2::Mutation {
 public:
     virtual ~Mutation() = default;
 
-    virtual Solution *mutate(Solution*) = 0;
+    virtual SolutionPtr mutate(SolutionPtr) = 0;
 };
 
 class hw2::Cooldown {
@@ -99,38 +103,34 @@ public:
     }
 };
 
-hw2::Solution *hw2::Annealing::run(Solution *init) {
+hw2::SolutionPtr hw2::Annealing::run(SolutionPtr init) {
     std::mt19937 rng(std::random_device{}());
     std::uniform_real_distribution dist(0., 1.);
 
-    best = init->copy();
-    Solution *sol_cur = init->copy();
+    best = init;
+    SolutionPtr sol_cur = init;
     double crit_cur = sol_cur->criterion();
     unsigned not_improved = 0u;
 
     for (unsigned it = 0u; not_improved < 100u; ++it) {
-        Solution *sol_new = mutation->mutate(sol_cur);
+        SolutionPtr sol_new = mutation->mutate(sol_cur);
         double crit_new = sol_new->criterion();
 
         double temp = cooldown->get_temp(it);
         double _diff = crit_cur - crit_new;
 
         if (_diff >= 0. || dist(rng) < std::exp(_diff / temp)) {
-            std::swap(sol_cur, sol_new);
+            sol_cur = sol_new;
             crit_cur = crit_new;
         }
 
-        delete sol_new;
-
         if (crit_cur < best->criterion()) {
-            delete best;
-            best = sol_cur->copy();
+            best = sol_cur;
         } else {
             ++not_improved;
         }
     }
 
-    delete sol_cur;
     return best;
 }
 
