@@ -13,6 +13,8 @@ namespace Scheduling {
 }
 
 class Scheduling::Solution: public hw2::Solution {
+    friend class Mutation;
+
     std::vector<std::vector<bool>> schedule;
     std::vector<unsigned> times;
 
@@ -78,5 +80,39 @@ double Scheduling::Solution::criterion(void) const {
     }
     return max - min;
 }
+
+hw2::Solution *Scheduling::Mutation::mutate(hw2::Solution *sol) {
+    Solution *ans = dynamic_cast<Solution*>(sol->copy());
+
+    std::random_device rd;
+    std::mt19937 rng(rd());
+    std::uniform_int_distribution<unsigned> dist_work(
+        0u, ans->times.size() - 1u
+    );
+    std::uniform_int_distribution<unsigned> dist_proc(
+        0u, ans->schedule.size() - 1u
+    );
+
+    unsigned work = dist_work(rng);
+    unsigned src;
+    unsigned dst;
+
+    for (unsigned proc = 0u; proc < ans->schedule.size(); ++proc) {
+        if (ans->schedule[proc][work]) {
+            src = proc;
+            break;
+        }
+    }
+
+    do {
+        dst = dist_proc(rng);
+    } while (dst == src);
+
+    ans->schedule[src][work] = false;
+    ans->schedule[dst][work] = true;
+
+    return ans;
+}
+
 
 #endif // _HW2_SCHEDULING_H
