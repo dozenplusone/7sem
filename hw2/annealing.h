@@ -103,6 +103,7 @@ hw2::Solution *hw2::Annealing::run(Solution *init) {
     std::mt19937 rng(std::random_device{}());
     std::uniform_real_distribution dist(0., 1.);
 
+    best = init->copy();
     Solution *sol_cur = init->copy();
     double crit_cur = sol_cur->criterion();
     unsigned not_improved = 0u;
@@ -121,7 +122,7 @@ hw2::Solution *hw2::Annealing::run(Solution *init) {
 
         delete sol_new;
 
-        if (!best || crit_cur < best->criterion()) {
+        if (crit_cur < best->criterion()) {
             delete best;
             best = sol_cur->copy();
         } else {
