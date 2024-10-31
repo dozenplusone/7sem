@@ -25,6 +25,7 @@ public:
     Solution(unsigned, const std::vector<unsigned>&);
 
     double criterion(void) const override;
+    std::vector<std::vector<unsigned>> get_schedule(void) const;
 };
 
 class Scheduling::Mutation: public hw2::Mutation {
@@ -88,6 +89,29 @@ double Scheduling::Solution::criterion(void) const {
     }
 
     return max - min;
+}
+
+std::vector<std::vector<unsigned>> Scheduling::Solution::get_schedule(void)
+const
+{
+    std::vector<std::vector<unsigned>> sched;
+
+    for (const auto &proc: schedule) {
+        sched.emplace_back();
+
+        for (unsigned work = 0u; work < proc.size(); ++work) {
+            if (proc[work]) {
+                sched.back().push_back(work);
+            }
+        }
+
+        std::sort(
+            sched.back().begin(), sched.back().end(),
+            [this](auto i, auto j) { return times[i] > times[j]; }
+        );
+    }
+
+    return sched;
 }
 
 hw2::SolutionPtr Scheduling::Mutation::mutate(hw2::SolutionPtr sol) {
