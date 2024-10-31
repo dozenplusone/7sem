@@ -108,8 +108,11 @@ hw2::SolutionPtr hw2::Annealing::run(SolutionPtr init) {
     std::uniform_real_distribution dist(0., 1.);
 
     best = init;
-    SolutionPtr sol_cur = init;
-    double crit_cur = sol_cur->criterion();
+    double crit_best = best->criterion();
+
+    SolutionPtr sol_cur = best;
+    double crit_cur = crit_best;
+
     unsigned not_improved = 0u;
 
     for (unsigned it = 0u; not_improved < 100u; ++it) {
@@ -124,8 +127,9 @@ hw2::SolutionPtr hw2::Annealing::run(SolutionPtr init) {
             crit_cur = crit_new;
         }
 
-        if (crit_cur < best->criterion()) {
+        if (crit_cur < crit_best) {
             best = sol_cur;
+            crit_best = crit_cur;
         } else {
             ++not_improved;
         }
