@@ -132,13 +132,12 @@ hw2::SolutionPtr Scheduling::Mutation::mutate(hw2::SolutionPtr sol) {
     );
 
     unsigned work = dist_work(rng);
-    unsigned src;
+    unsigned src = ans->schedule.size();
     unsigned dst;
 
-    for (unsigned proc = 0u; proc < ans->schedule.size(); ++proc) {
+    for (unsigned proc = 0u; proc < src; ++proc) {
         if (ans->schedule[proc][work]) {
             src = proc;
-            break;
         }
     }
 
