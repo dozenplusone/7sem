@@ -130,6 +130,7 @@ hw2::SolutionPtr hw2::Annealing::run(SolutionPtr init) {
         if (crit_cur < crit_best) {
             best = sol_cur;
             crit_best = crit_cur;
+            not_improved = 0u;
         } else {
             ++not_improved;
         }
