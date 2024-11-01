@@ -27,8 +27,8 @@
 
 \subsection*{Расписание}
 
-Расписание представлено в виде булевой матрицы $S \in \{0, 1\}^{M \times N}$,
-причём $S_{ij} = 1$, если на процессоре $p_i$ выполняется работа $W_j$,
+Введём булеву матрицу $S \in \{0, 1\}^{M \times N}$,
+где $S_{ij} = 1$, если на процессоре $p_i$ выполняется работа $W_j$,
 и $S_{ij} = 0$ иначе.
 
 Для каждого процессора $p_i$, $i = \overline{1, M}$, введём множество
@@ -38,9 +38,34 @@
 \end{equation}
 При этом $\bigcup\limits_{i=1}^M \Pi_i = W$.
 
+Каждое множество $\Pi_i$, $i = \overline{1, M}$, упорядочим по невозрастанию
+длительности работ, входящих во множество:
+\begin{equation}
+    \Pi_i = \{W_{i_k}\}_{k=1}^{|\Pi_i|},~
+    t_{i_1} \geq t_{i_2} \geq \dots \geq t_{i_{|\Pi_i|}}.
+\end{equation}
+
 Для каждой работы $W_j$, $j = \overline{1, N}$, обозначим время начала и конца
 выполнения через $T_B(W_j)$ и $T_E(W_j)$ соответственно.
 При этом $0 \leq T_B(W_j) \leq T_E(W_j)$.
+
+С учётом введённого выше порядка на множествах $\Pi_i$, $i = \overline{1, M}$,
+для $\forall W_{i_s} \in \Pi_i$,
+$i = \overline{1, M}$, $s = \overline{1, |\Pi_i|}$, справедливо
+\begin{equation}
+    T_E(W_{i_s}) = \sum\limits_{k=1}^s (\varepsilon_{i_k} + t_{i_k}),
+\end{equation}
+\begin{equation}
+    T_B(W_{i_{s + 1}}) = T_E(W_{i_s}) + \overline\varepsilon_{i_{s+1}}~
+    (s \neq |\Pi_i|),
+\end{equation}
+\begin{equation}
+    T_B(W_{i_1}) = \overline\varepsilon_{i_1},
+\end{equation}
+$\varepsilon_k \geq 0, \overline\varepsilon_k \geq 0$.
+
+Итак, расписание задаётся множествами $\Pi_i$, $i = \overline{1, M}$,
+с введённым на них порядком.
 
 \subsection*{Минимизируемый критерий}
 \label{crit}
@@ -58,17 +83,18 @@
 \subsection*{Ограничения}
 Каждая работа $W_j$, $\forall j = \overline{1, N}$:
 \begin{itemize}
-    \item выполняется без прерываний, т.е.
+    \item выполняется без прерываний и задержек:
+    $\forall i~\varepsilon_i = \overline\varepsilon_i = 0$, т.е.
     \begin{equation}
         T_E(W_j) = T_B(W_j) + t_j
     \end{equation}
     и
     \begin{equation}
-        \forall p_i~(|\Pi_i| > 0)~\exists! W_k \in \Pi_i: T_B(W_k) = 0,
+        \forall \Pi_i~T_B(W_{i_1}) = 0;
     \end{equation}
 
     \item выполняется строго на одном процессоре, т.е.
-    $\exists! p_i \in P: S_{ij} = 1;$
+    $\exists! \Pi_i:~W_j \in \Pi_i;$
 
     \item имеет фиксированное время выполнения: $t_j = \text{const}$.
 \end{itemize}
