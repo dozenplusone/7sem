@@ -40,6 +40,8 @@ Scheduling::Solution::Solution(
     : schedule(n_proc, std::vector<bool>(work_times.size(), false))
     , times(work_times)
 {
+    std::mt19937 rng(std::random_device{}());
+
     std::vector<unsigned> idx(times.size());
     std::iota(idx.begin(), idx.end(), 0u);
     std::sort(
@@ -57,6 +59,8 @@ Scheduling::Solution::Solution(
             desc = !desc;
         }
     }
+
+    std::shuffle(schedule.begin(), schedule.end(), rng);
 }
 
 double Scheduling::Solution::criterion(void) const {
