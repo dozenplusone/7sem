@@ -1,9 +1,13 @@
 #ifndef _HW2_ANNEALING_H
 #define _HW2_ANNEALING_H
 
+#include <algorithm>
 #include <cmath>
 #include <memory>
+#include <mutex>
 #include <random>
+#include <thread>
+#include <vector>
 
 namespace hw2 {
     class Annealing;
@@ -24,13 +28,19 @@ namespace hw2 {
 } // namespace hw2
 
 class hw2::Annealing {
+    std::vector<std::thread> threads;
+    std::vector<SolutionPtr> locals;
     SolutionPtr best;
     MutationPtr mutation;
     CooldownPtr cooldown;
+    mutable std::mutex mutex;
+
+    void thread_payload(void);
 
 public:
-    Annealing(MutationPtr mut, CooldownPtr cd)
-        : best(nullptr)
+    Annealing(unsigned n_proc, MutationPtr mut, CooldownPtr cd)
+        : threads(n_proc)
+        , best(nullptr)
         , mutation(mut)
         , cooldown(cd)
     {}
@@ -103,11 +113,11 @@ public:
     }
 };
 
-hw2::SolutionPtr hw2::Annealing::run(SolutionPtr init) {
+void hw2::Annealing::thread_payload(void) {
     std::mt19937 rng(std::random_device{}());
     std::uniform_real_distribution dist(0., 1.);
 
-    best = init;
+    SolutionPtr sol_best = best;
     double crit_best = best->criterion();
 
     SolutionPtr sol_cur = best;
@@ -115,7 +125,7 @@ hw2::SolutionPtr hw2::Annealing::run(SolutionPtr init) {
 
     unsigned not_improved = 0u;
 
-    for (unsigned it = 0u; not_improved < 100u; ++it) {
+    for (unsigned it = 0u; not_improved < 10u; ++it) {
         SolutionPtr sol_new = mutation->mutate(sol_cur);
         double crit_new = sol_new->criterion();
 
@@ -128,13 +138,52 @@ hw2::SolutionPtr hw2::Annealing::run(SolutionPtr init) {
         }
 
         if (crit_cur < crit_best) {
-            best = sol_cur;
+            sol_best = sol_cur;
             crit_best = crit_cur;
             not_improved = 0u;
         } else {
             ++not_improved;
         }
     }
+
+    std::lock_guard guard(mutex);
+    locals.emplace_back(std::move(sol_best));
+}
+
+hw2::SolutionPtr hw2::Annealing::run(SolutionPtr init) {
+    best = init;
+    double crit_best = best->criterion();
+
+    SolutionPtr cur = best;
+    double crit_cur = crit_best;
+
+    unsigned not_improved = 0u;
+
+    do {
+        for (auto &thr: threads) {
+            thr = std::thread(&Annealing::thread_payload, this);
+        }
+
+        for (auto &thr: threads) {
+            thr.join();
+        }
+
+        cur = *std::min_element(
+            locals.begin(), locals.end(),
+            [](auto s1, auto s2) { return s1->criterion() < s2->criterion(); }
+        );
+        crit_cur = cur->criterion();
+
+        if (crit_cur < crit_best) {
+            best = cur;
+            crit_best = crit_cur;
+            not_improved = 0u;
+        } else {
+            ++not_improved;
+        }
+
+        locals.clear();
+    } while (not_improved < 10u);
 
     return best;
 }
