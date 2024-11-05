@@ -4,6 +4,8 @@
 #include "annealing.h"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <limits>
 #include <vector>
 
@@ -23,6 +25,7 @@ class Scheduling::Solution: public hw2::Solution {
 
 public:
     Solution(unsigned, const std::vector<unsigned>&);
+    Solution(const std::filesystem::path&);
 
     double criterion(void) const override;
     std::vector<std::vector<unsigned>> get_schedule(void) const;
@@ -46,6 +49,37 @@ Scheduling::Solution::Solution(
     for (unsigned work = 0u; work < times.size(); ++work) {
         schedule[proc][work] = true;
     }
+}
+
+Scheduling::Solution::Solution(const std::filesystem::path &path) {
+    std::ifstream file(path);
+
+    if (!file.is_open()) {
+        throw std::invalid_argument("can't open file");
+    }
+
+    std::mt19937 rng(std::random_device{}());
+    unsigned n_proc;
+    unsigned time;
+
+    file >> n_proc;
+    file.get();
+    schedule.resize(n_proc);
+    unsigned proc = std::uniform_int_distribution(0u, n_proc - 1u)(rng);
+
+    while (file >> time) {
+        times.push_back(time);
+        schedule[proc].push_back(true);
+        file.get();
+    }
+
+    for (auto &proc: schedule) {
+        if (proc.empty()) {
+            proc.resize(times.size());
+        }
+    }
+
+    file.close();
 }
 
 double Scheduling::Solution::criterion(void) const {
