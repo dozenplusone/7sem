@@ -41,26 +41,11 @@ Scheduling::Solution::Solution(
     , times(work_times)
 {
     std::mt19937 rng(std::random_device{}());
+    unsigned proc = std::uniform_int_distribution(0u, n_proc - 1u)(rng);
 
-    std::vector<unsigned> idx(times.size());
-    std::iota(idx.begin(), idx.end(), 0u);
-    std::sort(
-        idx.begin(), idx.end(),
-        [this](auto i, auto j) { return times[i] < times[j]; }
-    );
-
-    unsigned proc = 0u;
-    bool desc = false;
-
-    while (!idx.empty()) {
-        schedule[proc - desc][idx.back()] = true;
-        idx.pop_back();
-        if (!desc && ++proc == n_proc || desc && --proc == 0u) {
-            desc = !desc;
-        }
+    for (unsigned work = 0u; work < times.size(); ++work) {
+        schedule[proc][work] = true;
     }
-
-    std::shuffle(schedule.begin(), schedule.end(), rng);
 }
 
 double Scheduling::Solution::criterion(void) const {
@@ -122,6 +107,10 @@ hw2::SolutionPtr Scheduling::Mutation::mutate(hw2::SolutionPtr sol) {
     SolutionPtr ans = std::make_shared<Solution>(
         *std::dynamic_pointer_cast<Solution>(sol)
     );
+
+    if (ans->schedule.size() <= 1u) {
+        return ans;
+    }
 
     std::mt19937 rng(std::random_device{}());
     std::uniform_int_distribution<unsigned> dist_work(
