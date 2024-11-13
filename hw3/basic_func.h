@@ -16,6 +16,8 @@ public:
 
 class TIdent: public TFunction {
 public:
+    explicit TIdent() = default;
+
     double operator()(double x) const override { return x; }
 
     std::string ToString() const override { return "x"; }
@@ -23,9 +25,11 @@ public:
 
 class TConst: public TFunction {
 public:
-    TConst(double param): ans(param) {}
+    explicit TConst(double param)
+        : ans(param)
+    {}
 
-    double operator()(double = 0.) const override { return ans; }
+    double operator()(double) const override { return ans; }
 
     std::string ToString() const override {
         std::stringstream out;
@@ -39,6 +43,8 @@ private:
 
 class TExp: public TFunction {
 public:
+    explicit TExp() = default;
+
     double operator()(double x) const override { return std::exp(x); }
 
     std::string ToString() const override { return "e^x"; }
@@ -46,7 +52,9 @@ public:
 
 class TPower: public TFunction {
 public:
-    TPower(double param): pow(param) {}
+    explicit TPower(double param)
+        : pow(param)
+    {}
 
     double operator()(double x) const override { return std::pow(x, pow); }
 
@@ -62,7 +70,9 @@ private:
 
 class TPolynomial: public TFunction {
 public:
-    TPolynomial(const std::vector<double>& params): coef(params) {}
+    explicit TPolynomial(const std::vector<double>& params)
+        : coef(params)
+    {}
 
     double operator()(double x) const override {
         double ans = 0.;
