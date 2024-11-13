@@ -1,0 +1,3 @@
+[submodule "hw3/googletest"]
+	path = hw3/googletest
+	url = https://github.com/google/googletest
