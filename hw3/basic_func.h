@@ -2,6 +2,7 @@
 #define _HW3_BASIC_FUNC_H
 
 #include <cmath>
+#include <memory>
 #include <sstream>
 #include <vector>
 
@@ -13,6 +14,8 @@ public:
 
     virtual std::string ToString() const = 0;
 };
+
+using TFunctionPtr = std::shared_ptr<TFunction>;
 
 class TIdent: public TFunction {
 public:
