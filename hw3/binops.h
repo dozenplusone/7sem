@@ -36,6 +36,10 @@ public:
         out << lhs->ToString() << " + " << rhs->ToString();
         return out.str();
     }
+
+    double GetDeriv(double x) const override {
+        return lhs->GetDeriv(x) + rhs->GetDeriv(x);
+    }
 };
 
 class TFuncDiff: public TFuncBinOper {
@@ -52,6 +56,10 @@ public:
         std::stringstream out;
         out << lhs->ToString() << " - (" << rhs->ToString() << ')';
         return out.str();
+    }
+
+    double GetDeriv(double x) const override {
+        return lhs->GetDeriv(x) - rhs->GetDeriv(x);
     }
 };
 
@@ -70,6 +78,10 @@ public:
         out << '(' << lhs->ToString() << ") * (" << rhs->ToString() << ')';
         return out.str();
     }
+
+    double GetDeriv(double x) const override {
+        return lhs->GetDeriv(x) * (*rhs)(x) + (*lhs)(x) * rhs->GetDeriv(x);
+    }
 };
 
 class TFuncDiv: public TFuncBinOper {
@@ -86,6 +98,13 @@ public:
         std::stringstream out;
         out << '(' << lhs->ToString() << ") / (" << rhs->ToString() << ')';
         return out.str();
+    }
+
+    double GetDeriv(double x) const override {
+        double div = (*rhs)(x);
+        return (
+            lhs->GetDeriv(x) * div - (*lhs)(x) * rhs->GetDeriv(x)
+        ) / (div * div);
     }
 };
 

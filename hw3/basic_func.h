@@ -13,6 +13,8 @@ public:
     virtual double operator()(double) const = 0;
 
     virtual std::string ToString() const = 0;
+
+    virtual double GetDeriv(double) const = 0;
 };
 
 using TFunctionPtr = std::shared_ptr<TFunction>;
@@ -24,6 +26,8 @@ public:
     double operator()(double x) const override { return x; }
 
     std::string ToString() const override { return "x"; }
+
+    double GetDeriv(double) const override { return 1.; }
 };
 
 class TConst: public TFunction {
@@ -40,6 +44,8 @@ public:
         return out.str();
     }
 
+    double GetDeriv(double) const override { return 0.; }
+
 private:
     double ans;
 };
@@ -51,6 +57,8 @@ public:
     double operator()(double x) const override { return std::exp(x); }
 
     std::string ToString() const override { return "e^x"; }
+
+    double GetDeriv(double x) const override { return std::exp(x); }
 };
 
 class TPower: public TFunction {
@@ -65,6 +73,10 @@ public:
         std::stringstream out;
         out << "x^" << pow;
         return out.str();
+    }
+
+    double GetDeriv(double x) const override {
+        return pow * std::pow(x, pow - 1);
     }
 
 private:
@@ -143,6 +155,21 @@ public:
         }
 
         return out.str();
+    }
+
+    double GetDeriv(double x) const override {
+        double ans = 0.;
+
+        if (coef.empty()) {
+            return ans;
+        }
+
+        for (std::size_t i = coef.size() - 1; i != 0; --i) {
+            ans *= x;
+            ans += i * coef[i];
+        }
+
+        return ans;
     }
 
 private:
